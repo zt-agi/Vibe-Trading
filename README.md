@@ -2163,3 +2163,8 @@ MIT License — see [LICENSE](LICENSE)
 <p align="center">
   <img src="https://visitor-badge.laobi.icu/badge?page_id=HKUDS.Vibe-Trading&style=flat" alt="visitors"/>
 </p>
+
+
+## PIT and market-actor extension
+
+This fork includes an opt-in [PIT and market-actor MCP extension](extensions/pit_actor_sim/README.md). It reads an external canonical point-in-time warehouse and invokes an existing governed actor simulator. It does not change the default data router, broker connectors, or live trading controls.
