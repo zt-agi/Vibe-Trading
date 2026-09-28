@@ -699,6 +699,17 @@ class ConcurrencyTest(LedgerCase):
         self.publish(self.mct_draft(), break_stale_lease=True)
         self.assertFalse(lease.exists())
 
+    def test_a_failed_index_rebuild_does_not_undo_a_publication(self):
+        from unittest.mock import patch
+
+        with patch.object(fl, "rebuild_index", side_effect=PermissionError("locked by Drive")):
+            receipt = self.publish(self.mct_draft())
+        self.assertIn("rebuild-index", receipt["index"]["action"])
+        fl.verify_shard_file(receipt["path"])
+        self.assertFalse((self.project / "_ledger" / "writer.lease").exists())
+        fl.rebuild_index(self.project)
+        self.assertTrue((self.project / "_ledger" / "index" / "INDEX_MANIFEST.json").is_file())
+
     def test_receipts_detect_a_deleted_last_shard(self):
         self.publish(self.mct_draft())
         self.clock.moment += timedelta(minutes=1)

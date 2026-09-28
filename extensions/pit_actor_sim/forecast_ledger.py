@@ -1284,7 +1284,15 @@ def _publish(project_dir: Path, draft_manifest: Mapping[str, Any], draft_rows: S
             raise ShardCollisionError(f"shard path {final} appeared during publication") from exc
         if sha256_file(final) != sha256_bytes(data):
             raise ChainError(f"published bytes at {final} differ from the verified scratch shard")
-        index_receipt = rebuild_index(project_dir) if index else None
+        index_receipt = None
+        if index:
+            # The shard is published and authoritative; the index is a disposable
+            # view, so a failed rebuild is reported, not raised as a failed publish.
+            try:
+                index_receipt = rebuild_index(project_dir)
+            except OSError as exc:
+                index_receipt = {"error": f"{type(exc).__name__}: {exc}",
+                                 "action": "run forecast_ledger.py rebuild-index"}
     return {
         "run_id": run_id,
         "path": str(final),
@@ -1498,7 +1506,14 @@ def rebuild_index(project_dir: Path | str) -> dict:
             continue
         temporary = target / f".{name}.{secrets.token_hex(6)}.tmp"
         temporary.write_bytes(data)
-        os.replace(temporary, path)
+        for attempt in range(4):
+            try:
+                os.replace(temporary, path)
+                break
+            except PermissionError:  # e.g. Drive for desktop holding the old file while uploading
+                if attempt == 3:
+                    raise
+                time.sleep(0.5 * (attempt + 1))
     return {"index_dir": str(target), "files": {name: sha256_bytes(data) for name, data in files.items()},
             "heads": [h.terminal_hash for h in ledger.heads], "fork": ledger.fork}
 
