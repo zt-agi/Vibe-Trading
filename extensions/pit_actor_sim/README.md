@@ -29,6 +29,9 @@ Set VIBE_TRADING_HOME to an isolated E: directory and INVESTMENT_AI_PROJECT_ROOT
         "pit_security",
         "pit_price_history",
         "pit_series_history",
+        "freeze_evidence_packet",
+        "inspect_evidence_packet",
+        "submit_role_fork",
         "run_market_actor_sim",
         "inspect_market_actor_run"
       ],
@@ -46,5 +49,16 @@ Before the first lookup, run `python extensions/pit_actor_sim/server.py --refres
 2. Call pit_price_history or pit_series_history with the same as-of and a bounded date range. Inspect row-level PIT class and knowledge time.
 3. For a scenario whose role forks and evidence snapshot already exist under market_actor_sim, call run_market_actor_sim with paths relative to that folder, such as config/scenario_iran_oil.yaml, runs/iran_oil_pit_pilot_20260828/role_forks.json, and runs/iran_oil_pit_pilot_20260828/evidence_snapshot.json.
 4. Read the returned authority, audit and cross-check results, uncertainty intervals, and limitations. Use inspect_market_actor_run for the full result.
+
+## Frozen packets and role forks (ZT add-on, 2026-09-28)
+
+The swarm preset `actor_mct_team` drives this flow; each step is also a plain tool call.
+
+1. `freeze_evidence_packet(scenario_id, run_asof, series, prices, memos, excluded_or_missing)` re-reads every named series and price through `obs_asof`/`price_asof` at `run_asof` (agents name series; they never type values). Rows without an admissible `pit_class` or known after the as-of are refused. Evidence-worker memos must cite admitted rows. The packet is written once under `VIBE_TRADING_HOME/actor_packets/<sha256>/packet.json`, where the sha256 is that of its canonical JSON, and records the audit-receipt hash, the lake signature and the scenario hash.
+2. Role forks read `inspect_evidence_packet(packet_sha256, view="role_fork")`: decision states, actors, actions and the frozen evidence, without outcome labels, rewards or other forks.
+3. Each fork calls `submit_role_fork(packet_sha256, temperament, memos, propensities)`. `fork_rules.py` ports `validate_forks` from `run_governed_pilot.py`: full state coverage with the node's actor, memos of 120+ characters that discuss every action, no terminal outcome named (checked on concepts, so paraphrases such as "a severe crude surge" count), propensities strictly between 0 and 1 summing to 1. Citations must resolve to the packet; an uncited state must name its missing observable and stay within 0.10 of uniform. Accepted forks are content-addressed and write-once.
+4. `run_market_actor_sim(packet_sha256=..., fork_order=[...])` re-validates the accepted set (three or more, unique labels), refuses a scenario file that changed after the freeze, runs the unchanged simulator, and writes `run_manifest.json` beside `pilot_result.json`. The manifest records the packet, scenario, forks and engine hashes, the lake signature and audit-receipt hash at freeze and at run, the graph as-of, the ontology version (`INVESTMENT_ONTOLOGY_VERSION`, else `UNVERSIONED_NO_ONTOLOGY_RELEASE`), user preset and skill hashes, and the inherited model configuration. Results carry `anchor_status: elicited-only`; report them as bands (`model_form_range`, Wilson intervals), never as point estimates.
+
+Tests: `python -m unittest test_server test_packets` from this folder with `VIBE_TRADING_HOME` set. With `INVESTMENT_AI_PROJECT_ROOT` also set, `PilotReplayTest` replays the 2026-08-28 pilot through freeze, three submissions and a packet run, and requires `ensemble_mc` to match `pilot_result.json` exactly (seed 20260828, 300,000 rollouts).
 
 The existing pilot is an integration example, not calibrated alpha. No live trading, order placement, or autonomous schedule is enabled by this extension.
