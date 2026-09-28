@@ -528,6 +528,26 @@ class ResolutionTest(LedgerCase):
         binary = next(g for g in board["groups"] if g["claim_type"] == "binary")
         self.assertEqual((binary["n_scored"], binary["n_void"]), (0, 4))
 
+    def test_a_legacy_v1_row_is_resolved_by_a_v21_shard(self):
+        v1_line = b'{"id": "01V1LEGACYROW-1", "kind": "prediction", "stated_probability": 0.8}'
+        draft = {
+            "run_manifest": {"project": PROJECT_NAME, "decision_id": "legacy:v1-migration", "mode": "resolution",
+                             "run_asof_utc": "2026-09-28T00:00:00Z", "attention_minutes": 3,
+                             "compute_seconds": 0, "estimated_cost_usd": 0},
+            "rows": [{"kind": "resolution", "legacy_schema": "zt-forecast-ledger/1", "target_id": "01V1LEGACYROW-1",
+                      "target_record_hash": fl.sha256_bytes(v1_line), "emitted_by": "human",
+                      "claim": "Resolution of V1 row 01V1LEGACYROW-1", "claim_type": "binary",
+                      "attribution": {"forecast_method_id": "legacy-v1"},
+                      "resolution": {"status": "RESOLVED", "reason": None},
+                      "scoring": {"rule": "brier_binary", "resolved_value": 1, "outcome": 1, "raw_score": 0.04,
+                                  "baseline_score": None, "skill_score": None,
+                                  "date_scored_utc": "2026-09-28T12:00:00Z"}}],
+        }
+        self.publish(draft)
+        result = fl.rescore_from_shards(self.project)
+        self.assertTrue(result["ok"], result)
+        self.assertEqual((result["checked"], result["legacy_v1_skipped"]), (0, 1))
+
     def test_invalid_pit_runs_are_resolved_but_never_scored_as_skill(self):
         evidence = copy.deepcopy(EVIDENCE)
         evidence["admitted_observations"][0]["knowledge_time"] = "2026-08-28T12:00:01"

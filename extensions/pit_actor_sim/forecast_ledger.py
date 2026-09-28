@@ -160,6 +160,8 @@ __all__ = [
 
 SCHEMA = "zt-forecast-ledger/2"
 AMENDMENT = "zt-forecast-ledger/2.1"
+#: v2 migration rule: later actions on V1 rows carry legacy_schema and target the v1 line.
+LEGACY_V1_SCHEMA = "zt-forecast-ledger/1"
 INDEX_SCHEMA = "zt-forecast-ledger/2.1-index"
 #: Names the per-line hash: VT src.governance.ledger.compute_record_hash.
 HASH_SCHEME = "vt-governance-ledger/sha256-canonical-json/v1"
@@ -1907,9 +1909,12 @@ def rescore_from_shards(project_dir: Path | str, *, rel_tol: float = 1e-12) -> d
     """Recompute every stored outcome and score from the shards alone."""
     ledger = load_project(project_dir)
     by_id = {row["id"]: (row, record_hash) for _, row, record_hash in ledger.rows()}
-    checked, mismatches = 0, []
+    checked, legacy, mismatches = 0, 0, []
     for _, row, _ in ledger.rows():
         if row["kind"] != "resolution":
+            continue
+        if row.get("legacy_schema") == LEGACY_V1_SCHEMA:
+            legacy += 1  # target lives in the v1 file; its hash binds the v1 line, not a shard row
             continue
         target, target_hash = by_id.get(row["target_id"], (None, None))
         if target is None or target_hash != row["target_record_hash"]:
@@ -1925,7 +1930,7 @@ def rescore_from_shards(project_dir: Path | str, *, rel_tol: float = 1e-12) -> d
                                        and math.isclose(stored, fresh, rel_tol=rel_tol, abs_tol=1e-15))
             if not same:
                 mismatches.append({"id": row["id"], "field": key, "stored": stored, "recomputed": fresh})
-    return {"checked": checked, "mismatches": mismatches, "ok": not mismatches}
+    return {"checked": checked, "legacy_v1_skipped": legacy, "mismatches": mismatches, "ok": not mismatches}
 
 
 def export_shard(project_dir: Path | str, run_id: str, dest: Path | str) -> dict:
