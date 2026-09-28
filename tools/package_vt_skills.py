@@ -49,12 +49,14 @@ from typing import Any, Iterable, Mapping, Sequence
 
 
 def _ensure_vt_importable() -> None:
-    try:
-        import src.agent.frontmatter  # noqa: F401
-    except ImportError:
-        agent_dir = Path(__file__).resolve().parents[1] / "agent"
-        if agent_dir.is_dir() and str(agent_dir) not in sys.path:
-            sys.path.insert(0, str(agent_dir))
+    """Prefer the VT checkout this tool ships in over any installed copy (see forecast_ledger)."""
+    if "src" in sys.modules:
+        return
+    agent_dir = Path(__file__).resolve().parents[1] / "agent"
+    if (agent_dir / "src" / "agent" / "skills.py").is_file():
+        if str(agent_dir) in sys.path:
+            sys.path.remove(str(agent_dir))
+        sys.path.insert(0, str(agent_dir))
 
 
 _ensure_vt_importable()

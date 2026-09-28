@@ -93,13 +93,20 @@ from typing import Any, Callable, Iterable, Iterator, Mapping, Protocol, Sequenc
 
 
 def _ensure_vt_importable() -> None:
-    """Make VT's ``src`` package importable when run from a source checkout."""
-    try:
-        import src.governance.ledger  # noqa: F401
-    except ImportError:
-        agent_dir = Path(__file__).resolve().parents[2] / "agent"
-        if agent_dir.is_dir() and str(agent_dir) not in sys.path:
-            sys.path.insert(0, str(agent_dir))
+    """Prefer the VT checkout this extension ships in over any installed copy.
+
+    The extension and VT's ``agent/`` tree are versioned together in the fork;
+    an installed ``vibe-trading-ai`` pointing at another checkout may lack the
+    add-on modules used here (``src.quantlib.scoring``). When ``src`` is
+    already imported (running inside VT itself), that package is used as is.
+    """
+    if "src" in sys.modules:
+        return
+    agent_dir = Path(__file__).resolve().parents[2] / "agent"
+    if (agent_dir / "src" / "governance" / "ledger.py").is_file():
+        if str(agent_dir) in sys.path:
+            sys.path.remove(str(agent_dir))
+        sys.path.insert(0, str(agent_dir))
 
 
 _ensure_vt_importable()
