@@ -5,6 +5,7 @@ import type {
   OptionsPayoffRequest,
   OptionsPayoffResponse,
 } from "@/lib/options";
+import type { ZtEnvelope, ZtReportsData, ZtSnapshotData } from "@/lib/ztTypes"; // ZT add-on
 
 const BASE = "";
 
@@ -633,6 +634,13 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ broker }),
     }),
+  // ZT add-on: read-only research dashboards (extensions/zt_dashboards).
+  listZtReports: () => request<ZtEnvelope<ZtReportsData>>("/zt/reports"),
+  getZtSnapshot: (date: string) =>
+    request<ZtEnvelope<ZtSnapshotData>>(`/zt/snapshot/${encodeURIComponent(date)}`),
+  // An iframe cannot send the bearer header, so the URL carries VT's
+  // single-use ticket (unchanged in loopback dev mode). Mint one per load.
+  ztReportUrl: (id: string) => withAuthTicket(ztReportPath(id)),
 };
 
 // --- Scheduled research types ---
@@ -1856,4 +1864,10 @@ export interface ToolTrailItem {
   preview?: string;
   call_id?: string;
   timestamp?: number;
+}
+
+// --- ZT add-on: read-only research dashboards (extensions/zt_dashboards) ---
+
+export function ztReportPath(id: string): string {
+  return `${BASE}/zt/reports/${id.split("/").map(encodeURIComponent).join("/")}`;
 }
