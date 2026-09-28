@@ -1,0 +1,15 @@
+﻿{
+    "logs":  {
+                 "stderr":  "G:\\My Drive\\work\\Investment-AI-Drive-Research\\implementation\\logs\\daily_terminal\\20260927T083006-0400.stderr.log",
+                 "stdout":  "G:\\My Drive\\work\\Investment-AI-Drive-Research\\implementation\\logs\\daily_terminal\\20260927T083006-0400.stdout.log"
+             },
+    "schema_version":  "1.0",
+    "collection_exit_code":  1,
+    "last_started_at":  "2026-09-27T08:30:06.3354302-04:00",
+    "last_completed_at":  "2026-09-27T09:06:47.0630981-04:00",
+    "message":  "Snapshot refreshed, but one or more isolated collectors failed; see logs and source-health status.",
+    "llm_analysis_status":  "BLOCKED_QUALITY_GATE",
+    "run_id":  "20260927T083006-0400",
+    "status":  "PARTIAL",
+    "snapshot_exit_code":  0
+}

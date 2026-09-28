@@ -1,0 +1,16 @@
+{
+  "as_of": "2026-07-19",
+  "source_id": "broker_positions",
+  "source_label": "Broker position captures",
+  "gross_absolute_captured_value": 1234567.89,
+  "top_1_concentration_pct": 11.11,
+  "top_3_concentration_pct": 33.33,
+  "top_5_concentration_pct": 55.55,
+  "pnl_status": "PARTIAL",
+  "pnl_position_count": 90,
+  "security_position_count": 100,
+  "pnl_value_coverage_pct": 69.03,
+  "captured_total_gain": 234567.89,
+  "reconciliation_status": "UNRECONCILED",
+  "note": "Concentration uses absolute captured row values. P&L totals include only rows where the broker capture supplied total-gain fields."
+}

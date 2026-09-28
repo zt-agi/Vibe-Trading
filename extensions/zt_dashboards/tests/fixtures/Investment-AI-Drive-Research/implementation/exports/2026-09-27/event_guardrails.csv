@@ -1,0 +1,4 @@
+category,status,source,as_of,note
+EARNINGS,UNAVAILABLE,No connected point-in-time earnings calendar,2026-09-27T08:57:26-04:00,Do not infer earnings dates from undated or current-only pages.
+DIVIDENDS_AND_CORPORATE_ACTIONS,UNAVAILABLE,No connected point-in-time corporate-action calendar,2026-09-27T08:57:26-04:00,"Splits, dividends, and other actions remain unavailable until an accepted source is connected."
+MACRO_RELEASE_CALENDAR,UNAVAILABLE,No connected release-time macro calendar,2026-09-27T08:57:26-04:00,Registered macro values do not establish future announcement times.

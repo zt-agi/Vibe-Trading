@@ -1,0 +1,156 @@
+{
+ "timeseries": {
+  "observations": 3042164,
+  "series": 402105,
+  "declared_series": 414539,
+  "revisions": 0,
+  "earliest": "1960-01-01 00:00:00",
+  "latest": "2026-08-23 00:00:00"
+ },
+ "prices": {
+  "rows": 67262,
+  "securities": 57,
+  "earliest": "2021-08-23",
+  "latest": "2026-08-21",
+  "intraday_rows": 0,
+  "corp_actions": 0,
+  "options": 0,
+  "positions": 0,
+  "flows": 0,
+  "events": 0,
+  "calendar_rows": 0
+ },
+ "documents": {
+  "docs": 1194,
+  "chunks": 126964,
+  "chars": 42194285
+ },
+ "sources": {
+  "DOWNLOADED": 69,
+  "LIVE": 15,
+  "KEYED": 2,
+  "BLOCKED": 2,
+  "MANUAL": 4,
+  "CANDIDATE": 31
+ },
+ "files": {
+  "pending": {
+   "n": 14142,
+   "mb": 10838.4
+  },
+  "skipped": {
+   "n": 3580,
+   "mb": 1471.9
+  },
+  "not_data": {
+   "n": 34145,
+   "mb": 3410.3
+  },
+  "registered": {
+   "n": 332,
+   "mb": 52065.8
+  },
+  "loaded": {
+   "n": 1822,
+   "mb": 312.7
+  }
+ },
+ "bulk": [
+  {
+   "view_name": "ext_event_study_panels_event_study_ready_panel",
+   "n_files": 1,
+   "bytes": 1818004600,
+   "pq": false
+  },
+  {
+   "view_name": "ext_afhubbard_gpu_prices_gpu_prices_2026_01_12_to_2026_07_28",
+   "n_files": 1,
+   "bytes": 1399416080,
+   "pq": false
+  },
+  {
+   "view_name": "ext_03_sec_insider_sec_insider_transactions_full_industry_pr",
+   "n_files": 1,
+   "bytes": 1017700802,
+   "pq": false
+  }
+ ],
+ "by_category": [
+  {
+   "category": "short_activity",
+   "series": 39783,
+   "obs": 1168470,
+   "mn": "2026-07-09 00:00:00",
+   "mx": "2026-08-21 00:00:00"
+  },
+  {
+   "category": "2016-07-23_to_2026-07-23",
+   "series": 33041,
+   "obs": 491574,
+   "mn": "1970-01-01 00:00:00",
+   "mx": "2026-07-23 00:00:00"
+  },
+  {
+   "category": "2025-08-06_to_2026-08-06",
+   "series": 257896,
+   "obs": 430483,
+   "mn": "1970-01-01 00:00:00",
+   "mx": "2026-08-06 00:00:00"
+  }
+ ],
+ "by_pit_class": [
+  {
+   "pit": "OBSERVED_PIT",
+   "series": 362019,
+   "obs": 1843412
+  },
+  {
+   "pit": "TRUE_PIT",
+   "series": 40086,
+   "obs": 1198752
+  }
+ ],
+ "by_source": [
+  {
+   "source_id": "finra_short_volume",
+   "series": 40007,
+   "obs": 1168694,
+   "last_known": "2026-08-22 00:00:00"
+  },
+  {
+   "source_id": "2016-07-23_to_2026-07-23",
+   "series": 33041,
+   "obs": 491574,
+   "last_known": "2026-07-25 00:00:00"
+  },
+  {
+   "source_id": "2025-08-06_to_2026-08-06",
+   "series": 257896,
+   "obs": 430483,
+   "last_known": "2026-08-07 00:00:00"
+  }
+ ],
+ "storage": {
+  "lake_facts": {
+   "files": 1925,
+   "gb": 3.37
+  },
+  "lake_bulk": {
+   "files": 1751,
+   "gb": 3.25
+  },
+  "lake_raw": {
+   "files": 162,
+   "gb": 0.04
+  },
+  "papers": {
+   "files": 4,
+   "gb": 0.01
+  },
+  "project_total": {
+   "files": 70660,
+   "gb": 72.71
+  },
+  "local_index_mb": 450.6
+ }
+}

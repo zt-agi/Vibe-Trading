@@ -1,0 +1,2 @@
+# ZT add-on: fixtures are data copied from Windows (CRLF, BOM); keep them byte-exact.
+* binary

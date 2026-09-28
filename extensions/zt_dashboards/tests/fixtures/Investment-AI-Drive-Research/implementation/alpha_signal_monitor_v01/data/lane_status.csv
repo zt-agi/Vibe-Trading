@@ -1,0 +1,13 @@
+lane_id,signal_name,cadence,current_freshness,current_age_days,stale_limit_days,collector_status,collector_script,scheduled,b3_dry_run,b3_three_clean_runs,b3_induced_failure_alert,consecutive_fresh_days,source,opened_on
+KR-SEMI-EXP,"Korea semiconductor exports, y/y",monthly,FRESH,45,45,LIVE,,NO,,,,0,MOTIE monthly export release (provisional),2026-08-15
+JPX-ETF-FLOW,"JPX ETF net balance, value basis",monthly,FRESH,31,45,LIVE,,NO,,,,0,JPX investor-type statistics,2026-08-15
+APU000072610,"US retail electricity price, y/y",monthly,FRESH,31,45,LIVE,,NO,,,,0,FRED,2026-08-15
+PCU334413334413,"Semiconductor PPI, y/y",monthly,FRESH,31,45,LIVE,,NO,,,,0,FRED,2026-08-15
+CHAIN-RS-20D,"Semi basket minus non-semi basket, 20-session return spread",daily,FRESH,1,5,LIVE,,NO,,,,0,live quotes: 30 semi vs 60 non-semi names,2026-08-15
+AAII-SENT,AAII bull-bear spread,weekly,FRESH,9,14,LIVE,,NO,,,,0,AAII sentiment survey,2026-08-15
+OCC-CHAIN-VOL,AI-chain single-name option volume (8 names),daily,STALE,8,5,NOT_BUILT,,NO,,,,0,OCC underlying volume query,2026-08-15
+OCC-EQ-PCR,OCC equity put/call open interest ratio,daily,STALE,8,5,NOT_BUILT,,NO,,,,0,OCC daily open interest,2026-08-15
+FED-ISSUANCE,US equity issuance run-rate (IPO + SEO),monthly,STALE,58,45,NOT_BUILT,,NO,,,,0,Federal Reserve equity issuance/retirement,2026-08-15
+HK-SHORT,SFC HK aggregate reportable short positions,weekly,STALE,15,14,NOT_BUILT,,NO,,,,0,SFC short position reporting,2026-08-15
+ECB-SPEECH-VOL,"ECB speech volume, weekly count",weekly,STALE,20,14,NOT_BUILT,,NO,,,,0,ECB speeches dataset,2026-08-15
+TRENDS-ATTN,"Semiconductor trending-search episodes, weekly",weekly (archive stale),STALE,90,14,NOT_BUILT,,NO,,,,0,GoogleTrendArchive (HuggingFace),2026-08-15

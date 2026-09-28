@@ -1,0 +1,17 @@
+{
+  "status": "IBKR_NOT_CONNECTED",
+  "checked_at": "2026-09-27T08:57:26-04:00",
+  "checked_ports": [
+    7496,
+    7497,
+    4001,
+    4002
+  ],
+  "listening_ports": [],
+  "detected_processes": [],
+  "detected_paths": [],
+  "order_capability": "DISABLED",
+  "account_data": "NOT_REQUESTED",
+  "market_data_entitlements": "NOT_REQUESTED",
+  "note": "No standard TWS/IB Gateway listener, candidate process, or standard JTS path was detected."
+}

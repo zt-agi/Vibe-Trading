@@ -1,0 +1,203 @@
+{
+ "schemaVersion": 2,
+ "typeProfile": "finance",
+ "probes": {
+  "workOrders": true,
+  "sessions": true,
+  "statusLedgers": true,
+  "catalogArtifacts": true,
+  "dataFreshness": true,
+  "diagnostics": true
+ },
+ "masterDataPointer": "Portfolio",
+ "project": {
+  "id": "investment-ai-drive-research",
+  "name": "Investment-AI-Drive-Research",
+  "summary": "Auto-seeded hub manifest (finance profile); extend curation as the project evolves.",
+  "canonicalFolder": "Investment-AI-Drive-Research"
+ },
+ "status": {
+  "label": "Gap-fill 2026-08-15 registered",
+  "state": "current",
+  "note": "Curated artifact index added; 9 Bridgewater gaps addressed; G5/G6 verdicts recorded.",
+  "asOf": "2026-08-15"
+ },
+ "items": [
+  {
+   "id": "start-readme",
+   "section": "start",
+   "role": "start",
+   "title": "README",
+   "state": "current",
+   "note": "Project entry point.",
+   "source": "batch seed",
+   "asOf": "2026-08-10",
+   "path": "README.md"
+  },
+  {
+   "id": "status-file",
+   "section": "status",
+   "role": "status",
+   "title": "状态 / Status",
+   "state": "current",
+   "note": "Governed status surface.",
+   "source": "batch seed",
+   "asOf": "2026-08-10",
+   "path": "00_协作/状态.md"
+  },
+  {
+   "id": "key-0",
+   "section": "artifacts",
+   "role": "key_dashboard",
+   "title": "Alpha Monitor Top 25",
+   "state": "current",
+   "note": "Adopted existing dashboard; not modified.",
+   "source": "batch seed",
+   "asOf": "2026-08-10",
+   "path": "ALPHA_MONITOR_TOP25.html"
+  },
+  {
+   "id": "key-1",
+   "section": "artifacts",
+   "role": "key_dashboard",
+   "title": "AI Ecosystem Research Control Panel",
+   "state": "current",
+   "note": "Adopted existing dashboard; not modified.",
+   "source": "batch seed",
+   "asOf": "2026-08-10",
+   "path": "AI_ECOSYSTEM_RESEARCH_CONTROL_PANEL.html"
+  },
+  {
+   "id": "key-2",
+   "section": "artifacts",
+   "role": "key_dashboard",
+   "title": "N1 Attention Control Plane",
+   "state": "current",
+   "note": "Adopted existing dashboard; not modified.",
+   "source": "batch seed",
+   "asOf": "2026-08-10",
+   "path": "N1_ATTENTION_CONTROL_PLANE.html"
+  },
+  {
+   "id": "legacy-index",
+   "section": "artifacts",
+   "role": "key_dashboard",
+   "title": "Legacy project index (preserved copy)",
+   "state": "current",
+   "note": "Pre-hub INDEX.html preserved verbatim before engine v2 took the root slot.",
+   "source": "rollout preservation rule",
+   "asOf": "2026-08-10",
+   "path": "INDEX_legacy_pre_hub_2026-08-10.html"
+  },
+  {
+   "id": "prov-manifest",
+   "section": "provenance",
+   "role": "provenance",
+   "title": "Project Hub input manifest",
+   "state": "current",
+   "note": "Seeded by the hub rollout batch; refine curation incrementally.",
+   "source": "order serial 21",
+   "asOf": "2026-08-10",
+   "path": "PROJECT_HUB.json"
+  },
+  {
+   "id": "recovery-refresh",
+   "section": "recovery",
+   "role": "recovery",
+   "title": "Regenerate this hub",
+   "state": "current",
+   "note": "python project_hub.py refresh --project-root <this project>",
+   "source": "engine contract",
+   "asOf": "2026-08-10",
+   "path": "PROJECT_HUB.json"
+  },
+  {
+   "id": "key-catalyst-dashboard",
+   "section": "artifacts",
+   "role": "key_dashboard",
+   "title": "Catalyst Dashboard",
+   "state": "current",
+   "note": "Existing finance dashboard; curation pointer only, contents unchanged.",
+   "source": "root inventory 2026-08-10",
+   "asOf": "2026-08-10",
+   "path": "CATALYST_DASHBOARD.html"
+  },
+  {
+   "id": "key-dcf-dashboard",
+   "section": "artifacts",
+   "role": "key_dashboard",
+   "title": "DCF Dashboard",
+   "state": "current",
+   "note": "Existing finance dashboard; curation pointer only, contents unchanged.",
+   "source": "root inventory 2026-08-10",
+   "asOf": "2026-08-10",
+   "path": "DCF_DASHBOARD.html"
+  },
+  {
+   "id": "monitor-ai-food-chain",
+   "section": "artifacts",
+   "role": "monitor",
+   "title": "Global AI Food-Chain Real-Time Monitor",
+   "state": "current",
+   "note": "Existing dated monitor; curation pointer only, contents unchanged.",
+   "source": "catalog manifest da117db1f431f846",
+   "asOf": "2026-08-10",
+   "path": "AI_FOOD_CHAIN_REALTIME_MONITOR_2026-08-09.html"
+  },
+  {
+   "id": "artifact-index-2026-08-15",
+   "section": "start",
+   "role": "key_dashboard",
+   "title": "Artifact & dashboard index (curated)",
+   "state": "current",
+   "note": "Hand-curated index of every dashboard, report, ledger and gap-fill artifact; 66 links QA'd, 0 broken.",
+   "source": "gapfill 2026-08-15",
+   "asOf": "2026-08-15",
+   "path": "ARTIFACT_INDEX_2026-08-15.html"
+  },
+  {
+   "id": "gapfill-report-2026-08-15",
+   "section": "artifacts",
+   "role": "report",
+   "title": "Bridgewater gap-fill report + measured verdicts",
+   "state": "current",
+   "note": "Closes the 9 gaps; G5 measured FAIL (Wilson lo 0.653), G6 BLOCKED (33.3% rater disagreement), NVDA asymmetry EDGE_CLAIMED.",
+   "source": "gapfill 2026-08-15",
+   "asOf": "2026-08-15",
+   "path": "research/ai_ecosystem_control/gapfill_2026-08-15/GAP_FILL_REPORT_2026-08-15.md"
+  },
+  {
+   "id": "gapfill-protocols-2026-08-15",
+   "section": "artifacts",
+   "role": "governance",
+   "title": "Gap-fill standing protocols",
+   "state": "current",
+   "note": "Six binding protocols: rubric, ensemble, forecast book, asymmetry, shadow book, short/avoid.",
+   "source": "gapfill 2026-08-15",
+   "asOf": "2026-08-15",
+   "path": "research/ai_ecosystem_control/gapfill_2026-08-15/PROTOCOLS.md"
+  },
+  {
+   "id": "quality-gates",
+   "section": "artifacts",
+   "role": "governance",
+   "title": "Milestone quality gates G0-G6",
+   "state": "current",
+   "note": "Amendment 3 (2026-08-15) adds the G5 LLM-accuracy gate and the G6 label-provenance gate.",
+   "source": "gapfill 2026-08-15",
+   "asOf": "2026-08-15",
+   "path": "research/ai_ecosystem_control/MILESTONE_QUALITY_GATES_2026-08-11.md"
+  },
+  {
+   "id": "four-track-ledger",
+   "section": "provenance",
+   "role": "ledger",
+   "title": "Four-track ledger",
+   "state": "current",
+   "note": "Rows AI4-0006..0018 added 2026-08-15.",
+   "source": "gapfill 2026-08-15",
+   "asOf": "2026-08-15",
+   "path": "research/ai_ecosystem_control/FOUR_TRACK_LEDGER.csv"
+  }
+ ]
+}

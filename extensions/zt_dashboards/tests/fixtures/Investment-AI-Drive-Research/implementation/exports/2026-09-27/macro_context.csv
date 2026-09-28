@@ -1,0 +1,3 @@
+series,label,value,as_of,underlying_source,status,source_id,source_path
+DCOILWTICO,WTI oil proxy,92.410004,2026-09-25,yahoo_proxy:CL=F (WTI front-month future ~ spot),PARTIAL,macro_fred,market_actor_sim/data_store/macro_fred/2026-09-27.csv
+DGS10,10-year yield proxy,5.184,2026-09-25,yahoo_proxy:^TNX (Yahoo ^TNX 10-year Treasury yield percentage quote),PARTIAL,macro_fred,market_actor_sim/data_store/macro_fred/2026-09-27.csv

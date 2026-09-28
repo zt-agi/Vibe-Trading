@@ -1,0 +1,150 @@
+﻿status,loader,source_id,files,mb,rows_loaded,example_reason
+not_data,,project_corpus,34231,3426.97,0.0,extension (none) is not a data or document type
+registered,inventory_policy_v1,project_corpus,7747,23490.03,0.0,project artifact not representable by the generic CSV time-series loader; preserved in place for its owning workflow
+skipped,,project_corpus,3266,2332.26,0.0,"governance, configuration, or manifest artifact; operational input rather than a market observation"
+skipped,csv_timeseries,2016-07-23_to_2026-07-23,2864,1769.71,0.0,no numeric value columns
+skipped,documents,project_corpus,2798,395.74,0.0,no extractable text
+loaded,documents,project_corpus,1194,82.9,1194.0,document
+registered,inventory_policy_v2,project_corpus,709,35978.13,0.0,tabular artifact preserved in place; source-specific schema and knowledge-time review required before PIT fact admission
+skipped,csv_timeseries,relative_performance_validation_2026-07-28,491,54.28,0.0,no date column detected
+loaded,csv_timeseries,relative_performance_validation_2026-07-28,136,19.75,260407.0,
+loaded,csv_timeseries,2016-07-23_to_2026-07-23,135,166.99,674160.0,
+loaded,csv_timeseries,2025-08-06_to_2026-08-06,68,71.91,511933.0,
+skipped,csv_timeseries,data,45,2.14,0.0,unreadable: EmptyDataError
+loaded,csv_timeseries,relative_performance,34,8.09,92262.0,
+not_data,,analysis,29,1.71,0.0,extension .py is not a data or document type
+loaded,csv_timeseries,data,24,2.42,105614.0,
+skipped,csv_timeseries,relative_performance,13,0.83,0.0,no date column detected
+skipped,csv_timeseries,dcf,13,2.22,0.0,no numeric value columns
+loaded,csv_timeseries,2026-04-23_to_2026-07-23,13,1.84,33010.0,
+skipped,csv_timeseries,alpha_signal_monitoring_2026-07-20,12,10.67,0.0,no numeric value columns
+loaded,csv_timeseries,dcf,12,1.99,37186.0,
+loaded,csv_timeseries,model,11,7.17,290998.0,
+loaded,csv_timeseries,analysis,11,0.71,23311.0,
+skipped,csv_timeseries,qa,10,0.06,0.0,empty file
+skipped,,analysis,10,4.64,0.0,derived output; excluded from PIT ingestion to prevent model-output feedback and look-ahead contamination
+skipped,inventory_policy_v1,project_corpus,10,404.96,0.0,derived output; excluded from PIT ingestion to prevent model-output feedback and look-ahead contamination
+skipped,csv_timeseries,demo,10,0.19,0.0,no date column detected
+skipped,csv_timeseries,2026-04-23_to_2026-07-23,10,5.25,0.0,no date column detected
+skipped,csv_timeseries,market_prices_rank01,9,0.11,0.0,no date column detected
+skipped,csv_timeseries,philosophical_canon_recomputed_2026-08-04,9,0.08,0.0,no numeric value columns
+skipped,csv_timeseries,n1_v31_attention_first_2026-08-03,9,0.03,0.0,no numeric value columns
+skipped,csv_timeseries,2025-08-06_to_2026-08-06,9,7.05,0.0,no numeric value columns
+loaded,csv_timeseries,alpha_signal_monitoring_2026-07-20,9,0.07,607.0,
+skipped,csv_timeseries,universe_sources,8,0.11,0.0,unreadable: ParserError
+loaded,csv_timeseries,options_uso,7,0.24,196.0,
+skipped,csv_timeseries,wo-20260802-0048-completeness,7,0.01,0.0,no date column detected
+loaded,csv_timeseries,cot,7,0.06,249.0,
+loaded,csv_timeseries,options_spy,7,0.37,196.0,
+loaded,csv_timeseries,bidclub_transcript_taxonomy_2026-08-18,7,3.65,16868.0,
+skipped,csv_timeseries,revalued_humanities_top20_2026-08-04,7,0.03,0.0,no numeric value columns
+skipped,csv_timeseries,ledgers,7,0.03,0.0,no date column detected
+loaded,csv_timeseries,etf_shares,7,0.09,3822.0,
+loaded,csv_timeseries,prices_eod,7,0.92,49725.0,
+loaded,csv_timeseries,finra_short_volume,7,0.01,224.0,
+loaded,csv_timeseries,macro_fred,7,1.02,14076.0,
+loaded,csv_timeseries,_scratch,6,2.3,20565.0,
+skipped,csv_timeseries,attention_constitution_v3_2026-08-04,6,0.01,0.0,no numeric value columns
+skipped,csv_timeseries,spacex_terafab_fel_asml_2026-08-09_v2,6,0.02,0.0,no numeric value columns
+skipped,csv_timeseries,attention_ceiling_arts_llm_2026-08-03,6,0.07,0.0,no numeric value columns
+skipped,inventory_policy_v1,analysis,6,0.13,0.0,derived output; excluded from PIT ingestion to prevent model-output feedback and look-ahead contamination
+loaded,csv_timeseries,outputs,6,0.07,5215.0,
+loaded,csv_timeseries,demo,6,0.87,15559.0,
+skipped,csv_timeseries,philosophy_closure_audit_2026-08-04,5,0.02,0.0,no date column detected
+loaded,csv_timeseries,superseded_legacy_2026-07-23,5,0.2,1801.0,
+loaded,csv_timeseries,poster_scorecards,5,0.05,3179.0,
+skipped,csv_timeseries,execution_first_turning_points,5,3.35,0.0,no date column detected
+loaded,csv_timeseries,tau_bench_successors_2026-08-02,5,0.59,3758.0,
+skipped,csv_timeseries,n1_hermes_controller_v2_2026-08-02,5,0.03,0.0,unreadable: ParserError
+loaded,csv_timeseries,content_analysis,5,1.93,7336.0,
+loaded,csv_timeseries,filtered_views,5,1.05,6506.0,
+skipped,csv_timeseries,tau_bench_successors_2026-08-02,5,0.14,0.0,no date column detected
+skipped,csv_timeseries,spacex_terafab_fel_asml_2026-08-09,5,0.01,0.0,no numeric value columns
+skipped,csv_timeseries,utils,5,0.39,0.0,no date column detected
+loaded,csv_timeseries,2026-08-21,4,0.02,87.0,
+loaded,csv_timeseries,ledgers,4,0.01,68.0,
+skipped,csv_timeseries,attention_ceiling_human_feedback_v2_2026-08-04,4,0.01,0.0,no date column detected
+skipped,csv_timeseries,evals,4,0.01,0.0,no date column detected
+loaded,csv_timeseries,2026-08-20,4,0.01,85.0,
+skipped,csv_timeseries,poster_style_turning_points,4,0.18,0.0,no date column detected
+loaded,csv_timeseries,2026-07-30,4,0.01,83.0,
+loaded,csv_timeseries,market_prices_rank01,4,1.26,1907.0,
+skipped,csv_timeseries,_scratch,4,3.24,0.0,no date column detected
+skipped,csv_timeseries,official_actor_feeds,4,1.31,0.0,no date column detected
+loaded,csv_timeseries,execution_first_turning_points,4,0.24,5334.0,
+loaded,csv_timeseries,evals,4,0.03,70.0,
+loaded,csv_timeseries,sentiment_market,4,0.14,6870.0,
+skipped,csv_timeseries,poster_scorecards,4,0.05,0.0,no date column detected
+loaded,csv_timeseries,2026-07-23,4,0.01,81.0,
+loaded,csv_timeseries,2026-08-22,4,0.02,87.0,
+skipped,csv_timeseries,evidence,3,0.01,0.0,no date column detected
+loaded,csv_timeseries,asymmetry,3,0.0,70.0,
+skipped,csv_timeseries,model,3,0.01,0.0,no date column detected
+skipped,csv_timeseries,filtered_views,3,1.92,0.0,date column 'date' unparseable
+loaded,csv_timeseries,shadow_book,3,0.15,1646.0,
+loaded,csv_timeseries,yield_curves,3,0.61,480.0,
+loaded,csv_timeseries,revalued_humanities_top20_2026-08-04,3,0.02,427.0,
+skipped,csv_timeseries,pearl_causal_revolution_philosophy_top10_2026-08-04,3,0.02,0.0,no date column detected
+loaded,csv_timeseries,industry,3,0.01,378.0,
+loaded,csv_timeseries,dataset_diagnostics,3,0.29,573.0,
+skipped,csv_timeseries,actor_map,2,0.0,0.0,no date column detected
+loaded,csv_timeseries,sender_influence,2,0.05,1548.0,
+skipped,csv_timeseries,gterm,2,0.28,0.0,no date column detected
+skipped,csv_timeseries,2026-08-20,2,0.0,0.0,date column 'as_of' unparseable
+skipped,csv_timeseries,2026-07-30,2,0.01,0.0,no numeric value columns
+loaded,csv_timeseries,macro,2,2.74,18801.0,
+skipped,csv_timeseries,etf_holdings,2,0.03,0.0,unreadable: ParserError
+skipped,csv_timeseries,2026-08-22,2,0.0,0.0,date column 'as_of' unparseable
+skipped,csv_timeseries,2026-07-23,2,0.0,0.0,no numeric value columns
+skipped,csv_timeseries,short_avoid,2,0.02,0.0,no date column detected
+loaded,csv_timeseries,forecast_book,2,0.01,40.0,
+loaded,csv_timeseries,philosophical_canon_recomputed_2026-08-04,2,0.01,740.0,
+skipped,csv_timeseries,n1_attention_control_plane,2,0.01,0.0,no numeric value columns
+loaded,csv_timeseries,qa,2,0.0,325.0,
+loaded,csv_timeseries,actor_map,2,0.09,168.0,
+skipped,csv_timeseries,2026-08-21,2,0.0,0.0,date column 'as_of' unparseable
+skipped,csv_timeseries,ensemble,2,0.01,0.0,no date column detected
+skipped,csv_timeseries,bidclub_transcript_taxonomy_2026-08-18,2,0.08,0.0,no numeric value columns
+loaded,csv_timeseries,gapfill_2026-08-15,2,0.01,64.0,
+skipped,csv_timeseries,technical_analysis_pit_oos_v2,1,0.01,0.0,no numeric value columns
+skipped,csv_timeseries,visual_reports,1,0.0,0.0,no numeric value columns
+skipped,csv_timeseries,n1_hermes_controller_2026-08-02,1,0.01,0.0,date column 'version_or_date' unparseable
+skipped,csv_timeseries,outputs,1,0.04,0.0,no date column detected
+loaded,csv_timeseries,n1_hermes_controller_v2_2026-08-02,1,0.0,4.0,
+loaded,csv_timeseries,attention_ceiling_arts_llm_2026-08-03,1,0.0,65.0,
+loaded,csv_timeseries,short_avoid,1,0.0,8.0,
+skipped,csv_timeseries,computational_supersession_2026-08-04,1,0.01,0.0,no date column detected
+skipped,csv_timeseries,2026-07-20,1,0.0,0.0,no numeric value columns
+loaded,csv_timeseries,poster_style_turning_points,1,0.01,150.0,
+skipped,csv_timeseries,forecast_book,1,0.0,0.0,empty file
+loaded,csv_timeseries,catalog,1,0.09,125.0,
+skipped,csv_timeseries,content_analysis,1,0.01,0.0,no date column detected
+loaded,csv_timeseries,ensemble,1,0.0,15.0,
+loaded,csv_timeseries,pearl_causal_revolution_philosophy_top10_2026-08-04,1,0.0,60.0,
+skipped,csv_timeseries,analysis,1,0.01,0.0,no numeric value columns
+skipped,csv_timeseries,alpha_signal_pit_ranker,1,0.01,0.0,no numeric value columns
+loaded,csv_timeseries,top25_aaii_sentiment_2026-08-07,1,0.01,371.0,
+loaded,csv_timeseries,top25_googletrendarchive_2026-08-07,1,1.05,10640.0,
+skipped,csv_timeseries,top25_ecb_speeches_2026-08-07,1,1.98,0.0,no numeric value columns
+loaded,csv_timeseries,price_source_status.csv,1,0.01,40.0,
+skipped,csv_timeseries,superseded_legacy_2026-07-23,1,0.01,0.0,no date column detected
+skipped,csv_timeseries,papers,1,0.0,0.0,no date column detected
+skipped,csv_timeseries,saturation_execution_cases_2026-08-02,1,0.0,0.0,no numeric value columns
+loaded,csv_timeseries,top25_jpx_etf_investor_type_2026-08-07,1,0.39,33.0,
+loaded,csv_timeseries,top25_fed_equity_issuance_2026-08-07,1,0.0,16.0,
+loaded,csv_timeseries,top25_occ_underlying_options_2026-08-07,1,0.06,2772.0,
+skipped,csv_timeseries,top25_fomc_communications_repo_2026-08-07,1,0.39,0.0,no numeric value columns
+loaded,csv_timeseries,2026-07-20,1,0.0,20.0,
+loaded,csv_timeseries,qa_saturation,1,0.01,59.0,
+skipped,csv_timeseries,portfolio,1,0.06,0.0,no date column detected
+loaded,csv_timeseries,top25_korea_semiconductor_exports_2026-08-07,1,0.0,22.0,
+loaded,csv_timeseries,top25_sfc_hk_etf_li_2026-08-07,1,0.03,4.0,
+skipped,csv_timeseries,component_price_observations.csv,1,0.97,0.0,"ValueError: Cannot mix tz-aware with tz-naive values, at position 32"
+skipped,csv_timeseries,project_corpus,1,7.18,0.0,derived output; excluded from PIT ingestion to prevent model-output feedback and look-ahead contamination
+skipped,csv_timeseries,broker,1,0.02,0.0,no numeric value columns
+loaded,csv_timeseries,config,1,0.01,25.0,
+skipped,csv_timeseries,www.sec.gov,1,0.77,0.0,unreadable: UnicodeDecodeError
+skipped,csv_timeseries,technical_analysis_ohlc,1,0.01,0.0,no numeric value columns
+loaded,csv_timeseries,ai_ecosystem_control,1,0.01,18.0,
+loaded,csv_timeseries,eacc-daily-ledger-2026,1,0.04,582.0,
+skipped,csv_timeseries,top25_manager_views_2026-08-07,1,0.31,0.0,no numeric value columns

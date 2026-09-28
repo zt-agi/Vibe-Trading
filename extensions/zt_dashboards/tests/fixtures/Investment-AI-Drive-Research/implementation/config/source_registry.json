@@ -1,0 +1,932 @@
+[
+  {
+    "id": "broker_positions",
+    "label": "Broker position captures",
+    "relative_dir": "broker/raw/positions_current",
+    "glob": "*_overview_dom.jsonl",
+    "source_type": "broker_capture",
+    "retention_class": "retained_text",
+    "cadence": "daily when authenticated capture runs",
+    "stale_after_hours": 48,
+    "purpose": "Owned-position and exposure relevance",
+    "authority": "User-owned Fidelity structured capture",
+    "limitation": "Not live IBKR data and not a complete performance ledger.",
+    "signal_method_tags": [
+      "exposure_aware_ranking",
+      "position_concentration",
+      "portfolio_attribution"
+    ],
+    "purpose_tags": [
+      "portfolio_context",
+      "risk_monitoring",
+      "signal_prioritization"
+    ],
+    "horizon_tags": [
+      "current_snapshot",
+      "daily"
+    ],
+    "asset_scope_tags": [
+      "owned_positions"
+    ],
+    "evidence_role_tags": [
+      "portfolio_state",
+      "relevance_filter"
+    ],
+    "tags": [
+      "current_snapshot",
+      "daily",
+      "exposure_aware_ranking",
+      "owned_positions",
+      "portfolio_attribution",
+      "portfolio_context",
+      "portfolio_state",
+      "position_concentration",
+      "relevance_filter",
+      "risk_monitoring",
+      "signal_prioritization"
+    ]
+  },
+  {
+    "id": "prices_eod",
+    "source_family_id": "market_prices",
+    "source_rank": 1,
+    "label": "End-of-day market prices",
+    "relative_dir": "market_actor_sim/data_store/prices_eod",
+    "glob": "*.csv",
+    "source_type": "market_data",
+    "retention_class": "retained_text",
+    "cadence": "trading daily",
+    "stale_after_hours": 72,
+    "purpose": "Delayed market context",
+    "authority": "Existing market_actor_sim collector",
+    "limitation": "Convenience data; not canonical execution pricing.",
+    "signal_method_tags": [
+      "technical_analysis",
+      "trend",
+      "momentum",
+      "mean_reversion",
+      "breakout",
+      "volatility",
+      "relative_strength",
+      "technical_pattern",
+      "volume_activity",
+      "liquidity_proxy"
+    ],
+    "purpose_tags": [
+      "signal_generation",
+      "feature_engineering",
+      "regime_detection",
+      "risk_monitoring",
+      "benchmarking"
+    ],
+    "horizon_tags": [
+      "daily",
+      "swing",
+      "medium_term"
+    ],
+    "asset_scope_tags": [
+      "equity",
+      "etf",
+      "cross_asset"
+    ],
+    "evidence_role_tags": [
+      "primary_market_observation",
+      "validation_benchmark"
+    ],
+    "tags": [
+      "benchmarking",
+      "breakout",
+      "cross_asset",
+      "daily",
+      "equity",
+      "etf",
+      "feature_engineering",
+      "liquidity_proxy",
+      "mean_reversion",
+      "medium_term",
+      "momentum",
+      "primary_market_observation",
+      "regime_detection",
+      "relative_strength",
+      "risk_monitoring",
+      "signal_generation",
+      "swing",
+      "technical_analysis",
+      "technical_pattern",
+      "trend",
+      "validation_benchmark",
+      "volatility",
+      "volume_activity"
+    ]
+  },
+  {
+    "id": "finra_short_volume",
+    "label": "FINRA short-sale volume",
+    "relative_dir": "market_actor_sim/data_store/finra_short_volume",
+    "glob": "*.csv",
+    "source_type": "regulatory_market_data",
+    "retention_class": "retained_text",
+    "cadence": "trading daily",
+    "stale_after_hours": 72,
+    "purpose": "Aggregate short-sale activity context",
+    "authority": "FINRA-derived existing collector",
+    "limitation": "Aggregate volume does not identify position, aggressor side, or informedness.",
+    "signal_method_tags": [
+      "short_pressure",
+      "contrarian",
+      "liquidity_imbalance",
+      "event_response"
+    ],
+    "purpose_tags": [
+      "signal_generation",
+      "crowding_monitoring",
+      "risk_monitoring"
+    ],
+    "horizon_tags": [
+      "daily",
+      "short_term"
+    ],
+    "asset_scope_tags": [
+      "us_equity"
+    ],
+    "evidence_role_tags": [
+      "official_market_activity",
+      "confirmatory"
+    ],
+    "tags": [
+      "confirmatory",
+      "contrarian",
+      "crowding_monitoring",
+      "daily",
+      "event_response",
+      "liquidity_imbalance",
+      "official_market_activity",
+      "risk_monitoring",
+      "short_pressure",
+      "short_term",
+      "signal_generation",
+      "us_equity"
+    ]
+  },
+  {
+    "id": "macro_fred",
+    "label": "FRED macro bundle",
+    "relative_dir": "market_actor_sim/data_store/macro_fred",
+    "glob": "*.csv",
+    "source_type": "official_macro",
+    "retention_class": "retained_text",
+    "cadence": "daily with series-specific release lags",
+    "stale_after_hours": 72,
+    "purpose": "Rates, oil, dollar, and volatility context",
+    "authority": "FRED series via existing collector",
+    "limitation": "Each series has its own release and revision behavior.",
+    "signal_method_tags": [
+      "macro_regime",
+      "rates_sensitivity",
+      "inflation_sensitivity",
+      "cross_asset"
+    ],
+    "purpose_tags": [
+      "regime_detection",
+      "risk_monitoring",
+      "feature_engineering",
+      "scenario_analysis"
+    ],
+    "horizon_tags": [
+      "monthly",
+      "quarterly",
+      "macro_cycle"
+    ],
+    "asset_scope_tags": [
+      "macro",
+      "cross_asset"
+    ],
+    "evidence_role_tags": [
+      "official_observation",
+      "conditioning_context"
+    ],
+    "tags": [
+      "conditioning_context",
+      "cross_asset",
+      "feature_engineering",
+      "inflation_sensitivity",
+      "macro",
+      "macro_cycle",
+      "macro_regime",
+      "monthly",
+      "official_observation",
+      "quarterly",
+      "rates_sensitivity",
+      "regime_detection",
+      "risk_monitoring",
+      "scenario_analysis"
+    ]
+  },
+  {
+    "id": "economic_releases",
+    "label": "Official U.S. economic observations",
+    "relative_dir": "market_actor_sim/data_store/economic_releases",
+    "glob": "*.json",
+    "source_type": "official_economic_data",
+    "retention_class": "retained_text",
+    "cadence": "daily collection with source-native release lags",
+    "stale_after_hours": 48,
+    "purpose": "Current growth, inflation, labor, demand, and monetary-policy observations for ECON plus exact ET release dates and times for CAL",
+    "authority": "BLS Public Data API and official BLS, BEA, Census, and Federal Reserve release schedules and releases",
+    "limitation": "Release frequencies differ; derived changes use published official index levels and may be revised. BEA, Census, and FOMC schedules refresh live. BLS blocks unattended schedule retrieval from this machine, so the official 2026 BLS schedule snapshot verified 2026-08-21 is labelled VERIFIED_SNAPSHOT until live retrieval succeeds.",
+    "signal_method_tags": ["macro_regime", "inflation", "growth", "labor", "monetary_policy"],
+    "purpose_tags": ["economic_monitoring", "regime_detection", "risk_monitoring"],
+    "horizon_tags": ["daily_collection", "monthly", "quarterly", "macro_cycle"],
+    "asset_scope_tags": ["macro", "cross_asset"],
+    "evidence_role_tags": ["official_observation", "conditioning_context"]
+  },
+  {
+    "id": "yield_curves",
+    "label": "Official sovereign yield curves",
+    "relative_dir": "market_actor_sim/data_store/yield_curves",
+    "glob": "*.csv",
+    "source_type": "official_rates",
+    "retention_class": "retained_text",
+    "cadence": "business daily with sovereign-market calendars",
+    "stale_after_hours": 96,
+    "purpose": "Current and prior-business-day sovereign curve comparison",
+    "authority": "U.S. Department of the Treasury and Japan Ministry of Finance",
+    "limitation": "Official constant-maturity curves; holidays differ and observations are not executable prices.",
+    "signal_method_tags": ["macro_regime", "rates_sensitivity", "cross_asset"],
+    "purpose_tags": ["daily", "risk_monitoring", "scenario_analysis"],
+    "horizon_tags": ["short_term", "macro_cycle"]
+  },
+  {
+    "id": "cot",
+    "label": "CFTC Commitments of Traders",
+    "relative_dir": "market_actor_sim/data_store/cot",
+    "glob": "*.csv",
+    "source_type": "official_positioning",
+    "retention_class": "retained_text",
+    "cadence": "weekly",
+    "stale_after_hours": 240,
+    "purpose": "Futures positioning and crowding context",
+    "authority": "CFTC public data via existing collector",
+    "limitation": "Publication is delayed and categories are aggregate.",
+    "signal_method_tags": [
+      "positioning",
+      "crowding",
+      "contrarian",
+      "trend_confirmation"
+    ],
+    "purpose_tags": [
+      "signal_generation",
+      "crowding_monitoring",
+      "risk_monitoring"
+    ],
+    "horizon_tags": [
+      "weekly",
+      "swing",
+      "medium_term"
+    ],
+    "asset_scope_tags": [
+      "futures",
+      "cross_asset"
+    ],
+    "evidence_role_tags": [
+      "official_positioning",
+      "confirmatory"
+    ],
+    "tags": [
+      "confirmatory",
+      "contrarian",
+      "cross_asset",
+      "crowding",
+      "crowding_monitoring",
+      "futures",
+      "medium_term",
+      "official_positioning",
+      "positioning",
+      "risk_monitoring",
+      "signal_generation",
+      "swing",
+      "trend_confirmation",
+      "weekly"
+    ]
+  },
+  {
+    "id": "etf_shares",
+    "label": "ETF shares and flow proxies",
+    "relative_dir": "market_actor_sim/data_store/etf_shares",
+    "glob": "*.csv",
+    "source_type": "fund_flow_proxy",
+    "retention_class": "retained_text",
+    "cadence": "trading daily",
+    "stale_after_hours": 72,
+    "purpose": "Leveraged ETF share-change context",
+    "authority": "Issuer/convenience sources via existing collector",
+    "limitation": "Shares-outstanding change is an estimate, not complete same-day flow.",
+    "signal_method_tags": [
+      "fund_flow",
+      "demand_pressure",
+      "relative_strength",
+      "crowding"
+    ],
+    "purpose_tags": [
+      "signal_generation",
+      "flow_monitoring",
+      "risk_monitoring"
+    ],
+    "horizon_tags": [
+      "daily",
+      "weekly",
+      "swing"
+    ],
+    "asset_scope_tags": [
+      "etf",
+      "cross_asset"
+    ],
+    "evidence_role_tags": [
+      "flow_proxy",
+      "confirmatory"
+    ],
+    "tags": [
+      "confirmatory",
+      "cross_asset",
+      "crowding",
+      "daily",
+      "demand_pressure",
+      "etf",
+      "flow_monitoring",
+      "flow_proxy",
+      "fund_flow",
+      "relative_strength",
+      "risk_monitoring",
+      "signal_generation",
+      "swing",
+      "weekly"
+    ]
+  },
+  {
+    "id": "prediction_markets",
+    "label": "Public prediction-market snapshot",
+    "relative_dir": "market_actor_sim/data_store/prediction_markets",
+    "glob": "*.json",
+    "source_type": "market_expectations",
+    "retention_class": "retained_text",
+    "cadence": "daily",
+    "stale_after_hours": 72,
+    "purpose": "Event probability benchmark",
+    "authority": "Public market APIs via existing collector",
+    "limitation": "Contract definitions, liquidity, and platform access differ.",
+    "signal_method_tags": [
+      "probability_change",
+      "event_risk",
+      "sentiment",
+      "surprise"
+    ],
+    "purpose_tags": [
+      "event_monitoring",
+      "scenario_analysis",
+      "signal_generation"
+    ],
+    "horizon_tags": [
+      "intraday",
+      "daily",
+      "event_horizon"
+    ],
+    "asset_scope_tags": [
+      "event_contract",
+      "macro"
+    ],
+    "evidence_role_tags": [
+      "market_expectation",
+      "alternative_data"
+    ],
+    "tags": [
+      "alternative_data",
+      "daily",
+      "event_contract",
+      "event_horizon",
+      "event_monitoring",
+      "event_risk",
+      "intraday",
+      "macro",
+      "market_expectation",
+      "probability_change",
+      "scenario_analysis",
+      "sentiment",
+      "signal_generation",
+      "surprise"
+    ]
+  },
+  {
+    "id": "edgar_13f_index",
+    "label": "SEC 13F filing index",
+    "relative_dir": "market_actor_sim/data_store/edgar_13f_index",
+    "glob": "*.json",
+    "source_type": "official_filing_index",
+    "retention_class": "retained_text",
+    "cadence": "quarterly with amendments",
+    "stale_after_hours": 2400,
+    "purpose": "Manager-disclosure availability",
+    "authority": "SEC EDGAR via existing collector",
+    "limitation": "Quarterly, delayed, incomplete for shorts and many derivatives.",
+    "signal_method_tags": [
+      "institutional_ownership",
+      "positioning_change",
+      "crowding",
+      "manager_conviction"
+    ],
+    "purpose_tags": [
+      "idea_generation",
+      "crowding_monitoring",
+      "fundamental_context"
+    ],
+    "horizon_tags": [
+      "quarterly",
+      "medium_term",
+      "long_term"
+    ],
+    "asset_scope_tags": [
+      "us_equity"
+    ],
+    "evidence_role_tags": [
+      "official_disclosure",
+      "lagged_context"
+    ],
+    "tags": [
+      "crowding",
+      "crowding_monitoring",
+      "fundamental_context",
+      "idea_generation",
+      "institutional_ownership",
+      "lagged_context",
+      "long_term",
+      "manager_conviction",
+      "medium_term",
+      "official_disclosure",
+      "positioning_change",
+      "quarterly",
+      "us_equity"
+    ]
+  },
+  {
+    "id": "options_spy",
+    "label": "SPY option snapshot",
+    "relative_dir": "market_actor_sim/data_store/options_spy",
+    "glob": "*.csv",
+    "source_type": "delayed_options",
+    "retention_class": "retained_text",
+    "cadence": "trading daily when collector succeeds",
+    "stale_after_hours": 72,
+    "purpose": "Sparse option-market context",
+    "authority": "Existing convenience collector",
+    "limitation": "Delayed and not an execution-grade option surface.",
+    "signal_method_tags": [
+      "implied_volatility",
+      "skew",
+      "put_call",
+      "tail_risk"
+    ],
+    "purpose_tags": [
+      "signal_generation",
+      "risk_monitoring",
+      "hedging_context"
+    ],
+    "horizon_tags": [
+      "intraday",
+      "daily",
+      "expiry_horizon"
+    ],
+    "asset_scope_tags": [
+      "index_option",
+      "etf_option"
+    ],
+    "evidence_role_tags": [
+      "derivatives_market_observation",
+      "confirmatory"
+    ],
+    "tags": [
+      "confirmatory",
+      "daily",
+      "derivatives_market_observation",
+      "etf_option",
+      "expiry_horizon",
+      "hedging_context",
+      "implied_volatility",
+      "index_option",
+      "intraday",
+      "put_call",
+      "risk_monitoring",
+      "signal_generation",
+      "skew",
+      "tail_risk"
+    ]
+  },
+  {
+    "id": "options_uso",
+    "label": "USO option snapshot",
+    "relative_dir": "market_actor_sim/data_store/options_uso",
+    "glob": "*.csv",
+    "source_type": "delayed_options",
+    "retention_class": "retained_text",
+    "cadence": "trading daily when collector succeeds",
+    "stale_after_hours": 72,
+    "purpose": "Sparse oil-option context",
+    "authority": "Existing convenience collector",
+    "limitation": "Delayed and not an execution-grade option surface.",
+    "signal_method_tags": [
+      "implied_volatility",
+      "skew",
+      "put_call",
+      "commodity_risk"
+    ],
+    "purpose_tags": [
+      "signal_generation",
+      "risk_monitoring",
+      "hedging_context"
+    ],
+    "horizon_tags": [
+      "intraday",
+      "daily",
+      "expiry_horizon"
+    ],
+    "asset_scope_tags": [
+      "commodity_etf_option"
+    ],
+    "evidence_role_tags": [
+      "derivatives_market_observation",
+      "confirmatory"
+    ],
+    "tags": [
+      "commodity_etf_option",
+      "commodity_risk",
+      "confirmatory",
+      "daily",
+      "derivatives_market_observation",
+      "expiry_horizon",
+      "hedging_context",
+      "implied_volatility",
+      "intraday",
+      "put_call",
+      "risk_monitoring",
+      "signal_generation",
+      "skew"
+    ]
+  },
+  {
+    "id": "official_actor_feeds",
+    "label": "Official central-bank speech and policy feeds",
+    "relative_dir": "market_actor_sim/data_store/official_actor_feeds",
+    "glob": "*.csv",
+    "source_type": "official_actor_text",
+    "retention_class": "retained_text",
+    "cadence": "daily",
+    "stale_after_hours": 48,
+    "purpose": "Timestamped official speech and policy-language monitoring for central-bank information and language-change research.",
+    "authority": "BIS, Federal Reserve Board, and European Central Bank official RSS/HTML",
+    "limitation": "Selected official feeds only; feed coverage is not complete, content may be metadata-only, and no stance or alpha inference is made without a later validated language model.",
+    "signal_method_tags": [
+      "policy_tone",
+      "topic_shift",
+      "event_surprise",
+      "narrative_momentum"
+    ],
+    "purpose_tags": [
+      "event_monitoring",
+      "regime_detection",
+      "scenario_analysis"
+    ],
+    "horizon_tags": [
+      "event_horizon",
+      "daily",
+      "macro_cycle"
+    ],
+    "asset_scope_tags": [
+      "macro",
+      "cross_asset"
+    ],
+    "evidence_role_tags": [
+      "official_text",
+      "causal_context"
+    ],
+    "tags": [
+      "causal_context",
+      "cross_asset",
+      "daily",
+      "event_horizon",
+      "event_monitoring",
+      "event_surprise",
+      "macro",
+      "macro_cycle",
+      "narrative_momentum",
+      "official_text",
+      "policy_tone",
+      "regime_detection",
+      "scenario_analysis",
+      "topic_shift"
+    ]
+  },
+  {
+    "id": "yousali_kospi_monitor",
+    "label": "Yousali KOSPI Monitor",
+    "relative_dir": "references/relative_performance_validation_2026-07-28/alternative/yousali_kospi_monitor",
+    "glob": "yousali_kospi_monitor_normalized_*.json",
+    "source_type": "third_party_korea_market_flow_monitor",
+    "retention_class": "retained_text",
+    "cadence": "intraday provider snapshots plus daily 30-trading-day composite capture",
+    "stale_after_hours": 36,
+    "purpose": "Korean foreign, institution, and individual net-flow context for SK hynix and KOSPI",
+    "authority": "Third-party Yousali composite API using Naver, Yahoo, and fixture fallbacks",
+    "limitation": "SECONDARY_CONTEXT_ONLY. Composite rows do not identify their upstream source; historical values lack original publication timestamps; fixture-matched margin rows are excluded; this is not an official KRX, Naver, or KOFIA feed and does not establish alpha or causality.",
+    "source_url": "https://kospi.yousali.com/?source=composite&lookback=30",
+    "admission_status": "SECONDARY_CONTEXT_ONLY",
+    "signal_method_tags": [
+      "investor_flow",
+      "market_breadth",
+      "short_pressure",
+      "cross_market_lead_lag"
+    ],
+    "purpose_tags": [
+      "signal_generation",
+      "flow_monitoring",
+      "regional_risk_monitoring"
+    ],
+    "horizon_tags": [
+      "daily",
+      "short_term",
+      "swing"
+    ],
+    "asset_scope_tags": [
+      "korea_equity",
+      "asia_equity"
+    ],
+    "evidence_role_tags": [
+      "third_party_monitor",
+      "confirmatory"
+    ],
+    "tags": [
+      "asia_equity",
+      "confirmatory",
+      "cross_market_lead_lag",
+      "daily",
+      "flow_monitoring",
+      "investor_flow",
+      "korea_equity",
+      "market_breadth",
+      "regional_risk_monitoring",
+      "short_pressure",
+      "short_term",
+      "signal_generation",
+      "swing",
+      "third_party_monitor"
+    ]
+  },
+  {
+    "id": "component_memory_prices",
+    "label": "DRAM and NAND spot, contract, module and street prices",
+    "relative_dir": "implementation/dcf/price_monitors",
+    "glob": "trendforce_*_snapshot.html",
+    "source_type": "semiconductor_component_prices",
+    "retention_class": "retained_text",
+    "cadence": "source-native daily, weekly, monthly, or quarterly by table",
+    "stale_after_hours": 240,
+    "purpose": "Memory-cycle, channel-price, inventory and semiconductor DCF context",
+    "authority": "TrendForce public price tables",
+    "limitation": "Some LPDDR, mobile DRAM, wafer, eMMC, and UFS tables expose item names but not public numeric prices; current public pages are not ten-year PIT history.",
+    "priority_rank": 1,
+    "signal_method_tags": [
+      "product_price_momentum",
+      "cycle_inflection",
+      "spread",
+      "supply_demand"
+    ],
+    "purpose_tags": [
+      "signal_generation",
+      "industry_cycle_monitoring",
+      "fundamental_context"
+    ],
+    "horizon_tags": [
+      "weekly",
+      "monthly",
+      "industry_cycle"
+    ],
+    "asset_scope_tags": [
+      "semiconductor",
+      "physical_market"
+    ],
+    "evidence_role_tags": [
+      "industry_price_observation",
+      "leading_indicator_candidate"
+    ],
+    "tags": [
+      "cycle_inflection",
+      "fundamental_context",
+      "industry_cycle",
+      "industry_cycle_monitoring",
+      "industry_price_observation",
+      "leading_indicator_candidate",
+      "monthly",
+      "physical_market",
+      "product_price_momentum",
+      "semiconductor",
+      "signal_generation",
+      "spread",
+      "supply_demand",
+      "weekly"
+    ]
+  },
+  {
+    "id": "cpu_second_hand_prices",
+    "label": "Exact-SKU CPU second-hand realized-price proxy",
+    "relative_dir": "implementation/dcf/price_monitors",
+    "glob": "secondhandsilicon_cpu_current.json",
+    "source_type": "processor_resale_prices",
+    "retention_class": "retained_text",
+    "cadence": "daily",
+    "stale_after_hours": 48,
+    "purpose": "CPU resale demand, depreciation, product-cycle and channel context",
+    "authority": "Second Hand Silicon filtered eBay completed-sale aggregation",
+    "limitation": "Third-party transformed proxy, not official eBay raw data or new-retail asking prices.",
+    "priority_rank": 2,
+    "signal_method_tags": [
+      "resale_price_momentum",
+      "demand_pressure",
+      "inventory_stress",
+      "spread"
+    ],
+    "purpose_tags": [
+      "signal_generation",
+      "demand_monitoring",
+      "valuation_context"
+    ],
+    "horizon_tags": [
+      "weekly",
+      "monthly",
+      "product_cycle"
+    ],
+    "asset_scope_tags": [
+      "cpu",
+      "secondary_market"
+    ],
+    "evidence_role_tags": [
+      "alternative_price_observation",
+      "demand_proxy"
+    ],
+    "tags": [
+      "alternative_price_observation",
+      "cpu",
+      "demand_monitoring",
+      "demand_pressure",
+      "demand_proxy",
+      "inventory_stress",
+      "monthly",
+      "product_cycle",
+      "resale_price_momentum",
+      "secondary_market",
+      "signal_generation",
+      "spread",
+      "valuation_context",
+      "weekly"
+    ]
+  },
+  {
+    "id": "gpu_second_hand_prices",
+    "label": "Exact-SKU GPU second-hand realized-price proxy",
+    "relative_dir": "implementation/dcf/price_monitors",
+    "glob": "secondhandsilicon_gpu_current.json",
+    "source_type": "processor_resale_prices",
+    "retention_class": "retained_text",
+    "cadence": "daily",
+    "stale_after_hours": 48,
+    "purpose": "GPU resale demand, depreciation, accelerator-cycle and channel context",
+    "authority": "Second Hand Silicon filtered eBay completed-sale aggregation",
+    "limitation": "Third-party transformed proxy, not official eBay raw data or new-retail asking prices.",
+    "priority_rank": 3,
+    "signal_method_tags": [
+      "resale_price_momentum",
+      "demand_pressure",
+      "inventory_stress",
+      "spread"
+    ],
+    "purpose_tags": [
+      "signal_generation",
+      "demand_monitoring",
+      "valuation_context"
+    ],
+    "horizon_tags": [
+      "weekly",
+      "monthly",
+      "product_cycle"
+    ],
+    "asset_scope_tags": [
+      "gpu",
+      "secondary_market"
+    ],
+    "evidence_role_tags": [
+      "alternative_price_observation",
+      "demand_proxy"
+    ],
+    "tags": [
+      "alternative_price_observation",
+      "demand_monitoring",
+      "demand_pressure",
+      "demand_proxy",
+      "gpu",
+      "inventory_stress",
+      "monthly",
+      "product_cycle",
+      "resale_price_momentum",
+      "secondary_market",
+      "signal_generation",
+      "spread",
+      "valuation_context",
+      "weekly"
+    ]
+  },
+  {
+    "id": "intraday_ohlcv_ta",
+    "label": "Intraday OHLCV bars for technical-analysis research",
+    "relative_dir": "implementation/technical_analysis_ohlc/data",
+    "glob": "intraday_ohlcv_*.csv",
+    "source_type": "intraday_market_data",
+    "retention_class": "append_ready_current_provider_history",
+    "cadence": "manual snapshot; incremental archival required before provider retention expiry",
+    "stale_after_hours": 24,
+    "purpose": "Hourly and 15-minute OHLCV input for multi-method technical-analysis research and validation demos",
+    "authority": "Yahoo Finance chart history acquired through yfinance; cross-provider validation pending",
+    "limitation": "Personal-use provider; retention windows, revisions, missing bars, and adjustment semantics can change. Not alpha-ready without independent validation.",
+    "source_urls": [
+      "https://github.com/ranaroussi/yfinance",
+      "https://finance.yahoo.com/"
+    ],
+    "signal_method_tags": [
+      "technical_analysis",
+      "trend",
+      "momentum",
+      "mean_reversion",
+      "breakout",
+      "volatility",
+      "relative_strength",
+      "technical_pattern",
+      "elliott_wave_candidate",
+      "market_microstructure_proxy",
+      "volume_activity",
+      "liquidity_proxy"
+    ],
+    "purpose_tags": [
+      "signal_generation",
+      "feature_engineering",
+      "regime_detection",
+      "risk_monitoring",
+      "execution_timing",
+      "method_validation"
+    ],
+    "horizon_tags": [
+      "15_minute",
+      "hourly",
+      "24_hour_demo",
+      "intraday",
+      "swing"
+    ],
+    "asset_scope_tags": [
+      "equity",
+      "etf",
+      "korea_equity",
+      "cross_asset"
+    ],
+    "evidence_role_tags": [
+      "primary_market_observation",
+      "experimental_ta_input",
+      "validation_benchmark"
+    ],
+    "tags": [
+      "15_minute",
+      "24_hour_demo",
+      "breakout",
+      "cross_asset",
+      "elliott_wave_candidate",
+      "equity",
+      "etf",
+      "execution_timing",
+      "experimental_ta_input",
+      "feature_engineering",
+      "hourly",
+      "intraday",
+      "korea_equity",
+      "liquidity_proxy",
+      "market_microstructure_proxy",
+      "mean_reversion",
+      "method_validation",
+      "momentum",
+      "primary_market_observation",
+      "regime_detection",
+      "relative_strength",
+      "risk_monitoring",
+      "signal_generation",
+      "swing",
+      "technical_analysis",
+      "technical_pattern",
+      "trend",
+      "validation_benchmark",
+      "volatility",
+      "volume_activity"
+    ]
+  }
+]

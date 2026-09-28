@@ -1,0 +1,192 @@
+===== 09/25/2026 Fri  7:40:01.77 ===== 
+--- pitdb daily run 2026-09-25 11:40 UTC ---
+  yahoo_eod              read     1,241  new       93   21.8s
+  stooq_eod              read         0  new        0    9.4s
+  fred                   read   135,846  new       11   18.0s
+  nyfed_rates            read       200  new       36    4.1s
+  finra_short_volume     read    12,359  new   37,077   14.8s
+  wiki_attention         read        37  new       19    8.4s
+  polymarket             read         0  new        0   17.4s
+  ercot_grid             read       654  new      654    6.0s
+  ecb_sdmx               read         6  new        5    6.1s
+  sec_edgar_index        read     6,935  new       17    5.8s
+  cftc_cot               read         0  new        0    1.8s
+seeded 39 catalog sources, 13 references
+persisted 5,471,046 rows across 20 tables -> G:\My Drive\work\Investment-AI-Drive-Research\implementation\pit_warehouse\lake
+   dim_source                        124
+   dim_security                       57
+   dim_security_alias                 57
+   dim_series                    529,292
+   dim_entity                         24
+   fact_price_eod                 69,419
+   fact_observation            4,684,765
+   doc_document                    1,194
+   doc_chunk                     126,964
+   ingest_run                      4,713
+   ingest_watermark                  117
+   source_file_ledger             54,307
+   ref_paper                          13
+   DATA_SOURCE_LEDGER       124
+   SERIES_LEDGER            529292
+   FILE_COVERAGE_LEDGER     149
+   PAPER_LEDGER             13
+   INGEST_LEDGER            500
+dashboard -> G:\My Drive\work\Investment-AI-Drive-Research\implementation\pit_warehouse\PIT_WAREHOUSE.html
+
+=== WAREHOUSE FACTS ===
+   observations           4,684,765
+   distinct series        520,141
+   revised points         9,291
+   price rows             69,419
+   securities             57
+   documents              1,194
+   sources LIVE           16
+   sources catalogued     124
+   files enumerated       54,307
+   files loaded           1,838
+   earliest event         1919-01-01 00:00:00
+   latest event           2026-09-25 11:41:57.211162
+
+=== PIT INTEGRITY ===
+   [PASS] A1 no fact precedes its own knowledge
+   [PASS] A2 prices are never known before the close they describe
+   [PASS] A3 no knowledge_time in the future
+   [PASS] A4 no duplicate revision at identical knowledge_time
+   [PASS] A5 every fact points at a registered source
+   [PASS] A6 every series is declared in dim_series
+   [PASS] A7 every price points at a real security
+   [PASS] A8 every ingest run is closed
+   [PASS] A9 no file left unexplained
+   [PASS] A10 no negative or zero close
+
+   OVERALL: PASS
+exit=0 
+===== 09/26/2026 Sat  7:40:01.50 ===== 
+--- pitdb daily run 2026-09-26 11:40 UTC ---
+  yahoo_eod              read     1,238  new      107  479.6s
+  stooq_eod              read         0  new        0   43.6s
+  fred                   read   135,856  new       13   35.7s
+  nyfed_rates            read       160  new       24   36.2s
+  finra_short_volume     read    12,348  new   37,044   14.5s
+  wiki_attention         read        32  new       16  349.1s
+  polymarket             read     1,000  new    3,000   17.5s
+  ercot_grid             read       104  new      104   38.6s
+  ecb_sdmx               read         5  new        4    7.5s
+  sec_edgar_index        read         0  new        0   22.5s
+  cftc_cot               read        96  new      288   51.2s
+  alfred_vintages        read         0  new        0    0.0s
+  sec_xbrl_facts         read    33,211  new        0   49.9s
+  epoch_ai               read     1,565  new      864   18.0s
+  worldbank              read     1,320  new        0  138.4s
+seeded 39 catalog sources, 13 references
+persisted 5,512,611 rows across 20 tables -> G:\My Drive\work\Investment-AI-Drive-Research\implementation\pit_warehouse\lake
+   dim_source                        124
+   dim_security                       57
+   dim_security_alias                 57
+   dim_series                    529,378
+   dim_entity                         24
+   fact_price_eod                 69,526
+   fact_observation            4,726,122
+   doc_document                    1,194
+   doc_chunk                     126,964
+   ingest_run                      4,728
+   ingest_watermark                  117
+   source_file_ledger             54,307
+   ref_paper                          13
+   DATA_SOURCE_LEDGER       124
+   SERIES_LEDGER            529378
+   FILE_COVERAGE_LEDGER     149
+   PAPER_LEDGER             13
+   INGEST_LEDGER            500
+dashboard -> G:\My Drive\work\Investment-AI-Drive-Research\implementation\pit_warehouse\PIT_WAREHOUSE.html
+
+=== WAREHOUSE FACTS ===
+   observations           4,726,122
+   distinct series        520,227
+   revised points         9,292
+   price rows             69,526
+   securities             57
+   documents              1,194
+   sources LIVE           16
+   sources catalogued     124
+   files enumerated       54,307
+   files loaded           1,838
+   earliest event         1919-01-01 00:00:00
+   latest event           2026-09-26 11:56:38.068922
+
+=== PIT INTEGRITY ===
+   [PASS] A1 no fact precedes its own knowledge
+   [PASS] A2 prices are never known before the close they describe
+   [PASS] A3 no knowledge_time in the future
+   [PASS] A4 no duplicate revision at identical knowledge_time
+   [PASS] A5 every fact points at a registered source
+   [PASS] A6 every series is declared in dim_series
+   [PASS] A7 every price points at a real security
+   [PASS] A8 every ingest run is closed
+   [PASS] A9 no file left unexplained
+   [PASS] A10 no negative or zero close
+
+   OVERALL: PASS
+exit=0 
+===== 09/27/2026 Sun  7:40:04.94 ===== 
+--- pitdb daily run 2026-09-27 14:38 UTC ---
+  yahoo_eod              read     1,106  new        2  1266.4s
+  stooq_eod              read         0  new        0  334.1s
+  fred                   read   135,856  new        0   36.9s
+  nyfed_rates            read       200  new        6    4.9s
+  finra_short_volume     read         0  new        0    0.0s
+  wiki_attention         read        24  new       13  739.1s
+  polymarket             read     1,000  new    3,000   21.9s
+  ercot_grid             read       104  new      104   40.6s
+  ecb_sdmx               read         2  new        1    8.6s
+  sec_edgar_index        read     4,411  new        8    4.8s
+  cftc_cot               read         0  new        0    2.3s
+seeded 39 catalog sources, 13 references
+persisted 5,515,825 rows across 20 tables -> G:\My Drive\work\Investment-AI-Drive-Research\implementation\pit_warehouse\lake
+   dim_source                        124
+   dim_security                       57
+   dim_security_alias                 57
+   dim_series                    529,447
+   dim_entity                         24
+   fact_price_eod                 69,528
+   fact_observation            4,729,254
+   doc_document                    1,194
+   doc_chunk                     126,964
+   ingest_run                      4,739
+   ingest_watermark                  117
+   source_file_ledger             54,307
+   ref_paper                          13
+   DATA_SOURCE_LEDGER       124
+   SERIES_LEDGER            529447
+   FILE_COVERAGE_LEDGER     149
+   PAPER_LEDGER             13
+   INGEST_LEDGER            500
+dashboard -> G:\My Drive\work\Investment-AI-Drive-Research\implementation\pit_warehouse\PIT_WAREHOUSE.html
+
+=== WAREHOUSE FACTS ===
+   observations           4,729,254
+   distinct series        520,296
+   revised points         9,292
+   price rows             69,528
+   securities             57
+   documents              1,194
+   sources LIVE           16
+   sources catalogued     124
+   files enumerated       54,307
+   files loaded           1,838
+   earliest event         1919-01-01 00:00:00
+   latest event           2026-09-27 15:18:13.071662
+
+=== PIT INTEGRITY ===
+   [PASS] A1 no fact precedes its own knowledge
+   [PASS] A2 prices are never known before the close they describe
+   [PASS] A3 no knowledge_time in the future
+   [PASS] A4 no duplicate revision at identical knowledge_time
+   [PASS] A5 every fact points at a registered source
+   [PASS] A6 every series is declared in dim_series
+   [PASS] A7 every price points at a real security
+   [PASS] A8 every ingest run is closed
+   [PASS] A9 no file left unexplained
+   [PASS] A10 no negative or zero close
+
+   OVERALL: PASS
