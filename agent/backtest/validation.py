@@ -12,6 +12,16 @@ Descriptive checks (each says what it measures -- ZT add-on relabel):
     consistency check, not a walk-forward test.
 The old keys stay accepted as deprecated aliases and are echoed in results.
 
+Selection-bias gate (ZT add-on, built on ``src.quantlib`` and the hash-chained
+trial ledger in ``backtest.variants``):
+  - ``dsr``: deflated Sharpe ratio over every ledgered trial of the question.
+  - ``pbo``: probability of backtest overfitting (CSCV) over the run's variants.
+  - ``cpcv``: combinatorial purged cross-validation, every split audited with
+    ``detect_boundary_leakage``; in-sample best variant, out-of-sample paths.
+  - ``fdr``: Benjamini-Hochberg over the family's trial p-values.
+  ``overall`` PASSes only when DSR >= 0.95, PBO < 0.5, the median out-of-sample
+  Sharpe across CPCV paths > 0 and the reported trial's BH q <= 0.10.
+
 Usage: called automatically by BaseEngine.run_backtest when config[\"validation\"]
 is present, or invoked directly on backtest outputs.
 """
@@ -35,6 +45,18 @@ DEPRECATED_VALIDATION_KEYS = {
     "monte_carlo": "trade_order_permutation",
     "walk_forward": "sequential_windows_no_refit",
 }
+
+#: The gate's fixed pass criteria (ZT add-on).
+GATE_THRESHOLDS = {
+    "dsr": 0.95,
+    "pbo": 0.5,
+    "cpcv_median_oos_sharpe": 0.0,
+    "fdr_q": 0.10,
+}
+DEFAULT_PBO_SPLITS = 16
+#: Most in-sample Sharpe evaluations (combinations x variants) a PBO may spend;
+#: past it the CSCV split count steps down (recorded as n_splits_used).
+DEFAULT_PBO_BUDGET = 100_000
 
 
 # ─── Trade-order permutation test (formerly "Monte Carlo") ───
@@ -381,6 +403,8 @@ def run_validation(
       - trade_order_permutation (deprecated alias: monte_carlo): {n_simulations, seed}
       - bootstrap: {n_bootstrap, confidence, seed, block_len}
       - sequential_windows_no_refit (deprecated alias: walk_forward): {n_windows}
+      - dsr / pbo / cpcv / fdr, or "gate": true for all four (ZT add-on; they
+        read the variant family the runner ledgered, see backtest.variants)
 
     A permutation or window result is written under both its canonical key and
     the deprecated one, so existing ``validation.json`` readers keep working.
@@ -445,6 +469,12 @@ def run_validation(
     if used:
         results["deprecated_keys"] = {k: DEPRECATED_VALIDATION_KEYS[k] for k in used}
 
+    from backtest.variants import requested_gate_checks
+
+    requested = requested_gate_checks(v_cfg)
+    if requested:
+        results.update(run_gate_checks(config, equity_curve, requested))
+
     return results
 
 
@@ -456,6 +486,287 @@ def _requested_key(v_cfg: Any, canonical: str) -> str | None:
         return canonical
     legacy = next((old for old, new in DEPRECATED_VALIDATION_KEYS.items() if new == canonical), None)
     return legacy if legacy in v_cfg else None
+
+
+# ─── Selection-bias gate: DSR / PBO / CPCV / FDR (ZT add-on) ───
+
+
+def _check_cfg(v_cfg: Any, name: str) -> Dict[str, Any]:
+    value = v_cfg.get(name) if isinstance(v_cfg, dict) else None
+    return dict(value) if isinstance(value, dict) else {}
+
+
+def _per_obs_sharpe(values: np.ndarray) -> float:
+    from src.quantlib.multipletesting import sharpe_ratio
+
+    try:
+        return float(sharpe_ratio(values))
+    except ValueError:
+        return float("nan")
+
+
+def run_gate_checks(
+    config: Dict[str, Any], equity_curve: pd.Series, requested: List[str]
+) -> Dict[str, Any]:
+    """Run the requested gate checks against the ledgered variant family.
+
+    A family that cannot be verified (no family prepared, broken ledger chain,
+    trials missing from the ledger, returns that differ from the ledgered
+    hashes) BLOCKS every requested check, and the overall verdict FAILs.
+    """
+    from backtest.variants import VARIANTS_CONFIG_KEY, TrialLedgerBlocked, load_trial_family
+
+    v_cfg = config.get("validation", {})
+    out: Dict[str, Any] = {}
+    try:
+        family = load_trial_family(config.get(VARIANTS_CONFIG_KEY))
+    except (TrialLedgerBlocked, OSError, ValueError, KeyError) as exc:
+        reason = str(exc)
+        for check in requested:
+            out[check] = {"status": "BLOCKED", "reason": reason}
+        out["overall"] = gate_verdict(out)
+        return out
+
+    runners = {
+        "dsr": lambda: deflated_sharpe_check(equity_curve, family, **_known(
+            _check_cfg(v_cfg, "dsr"), ())),
+        "pbo": lambda: pbo_check(family, **_known(_check_cfg(v_cfg, "pbo"), ("n_splits", "budget"))),
+        "cpcv": lambda: cpcv_check(family, **_known(_check_cfg(v_cfg, "cpcv"), (
+            "n_groups", "n_test_groups", "embargo_fraction", "label_horizon", "purge"))),
+        "fdr": lambda: fdr_check(family),
+    }
+    for check in requested:
+        try:
+            out[check] = runners[check]()
+        except (TypeError, ValueError) as exc:
+            out[check] = {"status": "INCONCLUSIVE", "reason": f"{type(exc).__name__}: {exc}"}
+    out["overall"] = gate_verdict(out)
+    return out
+
+
+def _known(cfg: Dict[str, Any], allowed: tuple[str, ...]) -> Dict[str, Any]:
+    unknown = sorted(set(cfg) - set(allowed))
+    if unknown:
+        raise ValueError(f"unknown option(s) {unknown}; allowed: {list(allowed)}")
+    return cfg
+
+
+def _ledger_summary(family: Any) -> Dict[str, Any]:
+    return {
+        "question_key": family.question_key,
+        "family": family.family,
+        "run_id": family.run_id,
+        "ledger_records_verified": family.ledger_records,
+        "ledger_head": family.ledger_head,
+    }
+
+
+def deflated_sharpe_check(equity_curve: pd.Series, family: Any) -> Dict[str, Any]:
+    """DSR of the run's own equity returns against every ledgered trial of its question."""
+    from src.quantlib.multipletesting import MIN_OBSERVATIONS, deflated_sharpe_ratio
+
+    threshold = GATE_THRESHOLDS["dsr"]
+    returns = equity_curve.pct_change().replace([np.inf, -np.inf], np.nan).dropna()
+    trial_sharpes = np.array([
+        float(r["sharpe_per_obs"]) for r in family.records
+        if isinstance(r.get("sharpe_per_obs"), (int, float)) and math.isfinite(r["sharpe_per_obs"])
+    ])
+    n_trials = len(family.records)
+    base: Dict[str, Any] = {
+        "threshold": threshold,
+        "n_trials": n_trials,
+        "n_observations": int(len(returns)),
+        "trial_source": "hash-chained trial ledger",
+        "ledger": _ledger_summary(family),
+    }
+    if len(returns) < MIN_OBSERVATIONS:
+        return {**base, "status": "INCONCLUSIVE",
+                "reason": f"needs >= {MIN_OBSERVATIONS} return observations"}
+    observed = _per_obs_sharpe(returns.to_numpy())
+    if not math.isfinite(observed):
+        return {**base, "status": "INCONCLUSIVE", "reason": "the equity curve has no return dispersion"}
+    spread = float(np.std(trial_sharpes, ddof=1)) if trial_sharpes.size > 1 else 0.0
+    skew = float(returns.skew())
+    kurtosis = float(returns.kurt()) + 3.0  # quantlib wants non-excess kurtosis
+    try:
+        res = deflated_sharpe_ratio(observed, max(n_trials, 1), len(returns), spread,
+                                    skew, kurtosis, confidence=threshold)
+    except ValueError as exc:
+        return {**base, "status": "INCONCLUSIVE", "reason": str(exc)}
+    return {
+        **base,
+        "status": "PASS" if res.deflated_sharpe_ratio >= threshold else "FAIL",
+        "deflated_sharpe_ratio": round(res.deflated_sharpe_ratio, 6),
+        "observed_sharpe_per_obs": round(res.observed_sharpe, 6),
+        "expected_max_sharpe_per_obs": round(res.expected_maximum_sharpe, 6),
+        "trial_sharpe_std": round(res.trial_sharpe_std, 6),
+        "skew": round(skew, 6),
+        "kurtosis": round(kurtosis, 6),
+    }
+
+
+def pbo_check(family: Any, *, n_splits: int = DEFAULT_PBO_SPLITS,
+              budget: int = DEFAULT_PBO_BUDGET) -> Dict[str, Any]:
+    """CSCV probability of backtest overfitting over the run's variant family."""
+    from src.quantlib.multipletesting import probability_of_backtest_overfitting
+
+    threshold = GATE_THRESHOLDS["pbo"]
+    matrix = family.returns
+    n_obs, n_variants = matrix.shape
+    if isinstance(n_splits, bool) or not isinstance(n_splits, Integral) or n_splits < 4 or n_splits % 2:
+        raise ValueError(f"pbo.n_splits must be an even integer >= 4, got {n_splits}")
+    base: Dict[str, Any] = {"threshold": threshold, "n_strategies": int(n_variants),
+                            "n_splits_requested": int(n_splits)}
+    if n_variants < 2:
+        return {**base, "status": "INCONCLUSIVE",
+                "reason": "PBO ranks variants against each other; declare a PARAM_GRID"}
+    used = int(n_splits)
+    while used > 4 and math.comb(used, used // 2) * n_variants > budget:
+        used -= 2
+    if n_obs < 2 * used:
+        return {**base, "status": "INCONCLUSIVE",
+                "reason": f"{n_obs} observations cannot fill {used} CSCV subsets"}
+    res = probability_of_backtest_overfitting(matrix.to_numpy(dtype=float), n_splits=used)
+    return {
+        **base,
+        "status": "PASS" if res.pbo < threshold else "FAIL",
+        "pbo": round(res.pbo, 6),
+        "n_splits_used": used,
+        "budget_reduced": used != n_splits,
+        "combinations_evaluated": int(res.n_splits),
+        "n_observations": int(res.n_observations),
+        "dropped_observations": int(res.dropped_observations),
+        "performance_degradation": (
+            round(res.performance_degradation, 6)
+            if math.isfinite(res.performance_degradation) else None
+        ),
+    }
+
+
+def cpcv_check(family: Any, *, n_groups: int = 6, n_test_groups: int = 2,
+               embargo_fraction: float = 0.01, label_horizon: int = 0,
+               purge: bool = True) -> Dict[str, Any]:
+    """Combinatorial purged CV of the family's selection rule, leakage-audited per split.
+
+    Each split picks the variant with the best in-sample Sharpe on its
+    training rows and records that variant on the held-out groups; the
+    held-out groups assemble into ``C(n_groups-1, n_test_groups-1)`` full
+    out-of-sample paths. Every split is audited with ``detect_boundary_leakage``
+    against the TRUE label spans (``label_horizon`` bars), whatever the
+    splitter was told, so an unpurged or mis-purged split fails the check.
+    """
+    from src.quantlib.crossvalidation import combinatorial_purged_splits, detect_boundary_leakage
+
+    threshold = GATE_THRESHOLDS["cpcv_median_oos_sharpe"]
+    if isinstance(label_horizon, bool) or not isinstance(label_horizon, Integral) or label_horizon < 0:
+        raise ValueError(f"cpcv.label_horizon must be an integer >= 0, got {label_horizon}")
+    if not isinstance(purge, bool):
+        raise ValueError("cpcv.purge must be true or false")
+    matrix = family.returns.to_numpy(dtype=float)
+    n_obs, n_variants = matrix.shape
+    label_ends = np.minimum(np.arange(n_obs) + int(label_horizon), n_obs - 1)
+    embargo_size = int(round(n_obs * embargo_fraction))
+    splits = list(combinatorial_purged_splits(
+        n_obs, label_ends if purge else None, n_groups, n_test_groups, embargo_fraction))
+    bounds = np.linspace(0, n_obs, n_groups + 1).astype(int)
+    blocks = [np.arange(bounds[g], bounds[g + 1]) for g in range(n_groups)]
+    n_paths = math.comb(n_groups - 1, n_test_groups - 1)
+    segments: List[List[np.ndarray | None]] = [[None] * n_groups for _ in range(n_paths)]
+    seen = [0] * n_groups
+    dirty: List[Dict[str, Any]] = []
+    for index, split in enumerate(splits):
+        report = detect_boundary_leakage(split, label_ends, n_samples=n_obs, embargo_size=embargo_size)
+        if not report.clean:
+            dirty.append({"split": index, "overlapping": int(report.overlapping.size),
+                          "shared": int(report.shared.size),
+                          "embargo_violations": int(report.embargo_violations.size)})
+        in_sample = np.array([_per_obs_sharpe(matrix[split.train, j]) for j in range(n_variants)])
+        best = int(np.nanargmax(np.where(np.isfinite(in_sample), in_sample, -np.inf)))
+        held = set(split.test.tolist())
+        for group, rows in enumerate(blocks):
+            if rows.size and held.issuperset(rows.tolist()) and seen[group] < n_paths:
+                segments[seen[group]][group] = matrix[rows, best]
+                seen[group] += 1
+    path_sharpes = [
+        _per_obs_sharpe(np.concatenate(path)) for path in segments
+        if all(segment is not None for segment in path)
+    ]
+    finite = [s for s in path_sharpes if math.isfinite(s)]
+    median = float(np.median(finite)) if finite else float("nan")
+    result: Dict[str, Any] = {
+        "threshold": threshold,
+        "n_groups": int(n_groups),
+        "n_test_groups": int(n_test_groups),
+        "n_splits": len(splits),
+        "n_paths": len(path_sharpes),
+        "label_horizon": int(label_horizon),
+        "embargo_fraction": float(embargo_fraction),
+        "purge": purge,
+        "selection": ("in-sample best of the variant family" if n_variants > 1
+                      else "single variant (no selection)"),
+        "path_sharpes_per_obs": [round(s, 6) if math.isfinite(s) else None for s in path_sharpes],
+        "median_oos_sharpe_per_obs": round(median, 6) if math.isfinite(median) else None,
+        "leakage": {"splits_audited": len(splits), "dirty_splits": len(dirty),
+                    "examples": dirty[:5]},
+    }
+    if dirty:
+        result.update(status="FAIL", reason=f"boundary leakage in {len(dirty)} of {len(splits)} splits")
+    elif not finite:
+        result.update(status="INCONCLUSIVE", reason="no out-of-sample path has a defined Sharpe")
+    else:
+        result["status"] = "PASS" if median > threshold else "FAIL"
+    return result
+
+
+def fdr_check(family: Any) -> Dict[str, Any]:
+    """Benjamini-Hochberg q-value of the reported trial within its ledgered family."""
+    from src.quantlib.multipletesting import benjamini_hochberg
+
+    q_max = GATE_THRESHOLDS["fdr_q"]
+    records = family.records
+    p_values = [
+        float(r["p_value"]) if isinstance(r.get("p_value"), (int, float))
+        and math.isfinite(r["p_value"]) else 1.0
+        for r in records
+    ]
+    reported = [i for i, r in enumerate(records)
+                if r.get("run_id") == family.run_id and r.get("variant") == family.reported_variant]
+    base = {"threshold": q_max, "n_hypotheses": len(records), "ledger": _ledger_summary(family)}
+    if not reported or not p_values:
+        return {**base, "status": "BLOCKED", "reason": "the reported trial is not in the ledgered family"}
+    res = benjamini_hochberg(np.clip(p_values, 0.0, 1.0), fdr=q_max)
+    q_value = float(res.adjusted_p_values[reported[0]])
+    return {
+        **base,
+        "status": "PASS" if q_value <= q_max else "FAIL",
+        "q_value": round(q_value, 6),
+        "reported_p_value": round(p_values[reported[0]], 6),
+        "n_rejected": int(res.n_rejected),
+    }
+
+
+def gate_verdict(results: Dict[str, Any]) -> Dict[str, Any]:
+    """PASS only when all four gate checks ran and passed (ZT add-on)."""
+    from backtest.variants import GATE_CHECKS
+
+    statuses = {
+        check: (results.get(check) or {}).get("status", "NOT_RUN") for check in GATE_CHECKS
+    }
+    failed = sorted(c for c, s in statuses.items() if s in ("FAIL", "BLOCKED"))
+    open_ = sorted(c for c, s in statuses.items() if s not in ("PASS", "FAIL", "BLOCKED"))
+    verdict = "FAIL" if failed else ("PASS" if not open_ else "INCONCLUSIVE")
+    return {
+        "verdict": verdict,
+        "statuses": statuses,
+        "failed": failed,
+        "not_passed_yet": open_,
+        "criteria": {
+            "dsr": f"deflated_sharpe_ratio >= {GATE_THRESHOLDS['dsr']}",
+            "pbo": f"pbo < {GATE_THRESHOLDS['pbo']}",
+            "cpcv": "median out-of-sample Sharpe across CPCV paths > 0, no leaking split",
+            "fdr": f"Benjamini-Hochberg q <= {GATE_THRESHOLDS['fdr_q']}",
+        },
+    }
 
 
 # ─── Standalone CLI ───

@@ -1295,6 +1295,13 @@ def main(run_dir: Path) -> None:
         sys.exit(1)
     data_map = _maybe_inject_fundamentals_for_factor_panel(data_map, config)
 
+    # ZT add-on: DSR / PBO / CPCV / FDR validation needs the strategy's
+    # parameter family evaluated on this exact snapshot and every trial
+    # ledgered first (no-op unless config["validation"] asks for them).
+    from backtest.variants import prepare_validation_variants
+
+    prepare_validation_variants(config, engine_cls, data_map, run_dir)
+
     # Engine
     engine_type = config.get("engine", "daily")
     signal_engine = engine_cls()
