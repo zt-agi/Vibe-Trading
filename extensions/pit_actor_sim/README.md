@@ -4,26 +4,26 @@ This opt-in MCP server connects Vibe-Trading to the existing Investment-AI-Drive
 
 ## Boundaries
 
-- The Parquet lake at implementation/pit_warehouse/lake remains the canonical time-series store. The tools query price_asof and obs_asof with a required knowledge-time cutoff. A disposable D: DuckDB index is rebuilt from the G: lake for responsive MCP reads, and the extension refuses stale index receipts. Each returned row includes source, knowledge time, revision, and PIT class.
+- The Parquet lake at implementation/pit_warehouse/lake remains the canonical time-series store. The tools query price_asof and obs_asof with a required knowledge-time cutoff. A disposable E: DuckDB index (E:\pitdb\pit.duckdb) is rebuilt from the G: lake for responsive MCP reads, and the extension refuses stale index receipts. Each returned row includes source, knowledge time, revision, and PIT class.
 - A row with NON_PIT or missing PIT class is labeled in the response. A data response is research context; it is not a certified backtest or trade signal.
 - The simulator is market_actor_sim/run_governed_pilot.py. Agents provide state-local action propensities with cited evidence; the extension does not assign terminal probabilities. The original simulator validates forks, computes exact and sampled outcome distributions, and keeps the RESEARCH_PILOT_ONLY_UNCALIBRATED authority label.
-- Simulation inputs remain in the canonical project. Temporary output, runtime history, and package dependencies stay on D: or E: on Windows. A passing pitdb audit receipt no older than one hour and bound to the current lake must exist before the tool runs the simulator. Accepted research results can be promoted separately through the project's governed ledger.
+- Simulation inputs remain in the canonical project. Temporary output, runtime history, and package dependencies stay on E: on Windows (ZT 2026-09-28: everything on E:); the extension refuses a runtime or index on C:, D: or the system drive. A passing pitdb audit receipt no older than one hour and bound to the current lake must exist before the tool runs the simulator. Accepted research results can be promoted separately through the project's governed ledger.
 - This extension does not register Vibe-Trading's standard backtest data loaders. Their free-provider fallback does not meet the project's PIT contract by itself. Backtest integration should use a dedicated loader with explicit security identity, availability cutoffs, audit receipts, and negative look-ahead tests.
 
 ## Operator configuration
 
-Set VIBE_TRADING_HOME to an isolated D: or E: directory and INVESTMENT_AI_PROJECT_ROOT to the canonical project folder. Add a mcpServers entry to the runtime's agent.json:
+Set VIBE_TRADING_HOME to an isolated E: directory and INVESTMENT_AI_PROJECT_ROOT to the canonical project folder. Add a mcpServers entry to the runtime's agent.json:
 
 ~~~json
 {
   "mcpServers": {
     "pit-actor-sim": {
-      "command": "D:\\path\\to\\venv\\Scripts\\python.exe",
-      "args": ["G:\\My Drive\\work\\Investment-AI-Drive-Research\\third_party\\upstream_sources\\Vibe-Trading\\extensions\\pit_actor_sim\\server.py"],
+      "command": "E:\\codex-runtime\\investment-ai\\vibe-trading\\venv\\Scripts\\python.exe",
+      "args": ["E:\\codex-runtime\\investment-ai\\vibe-trading\\src\\extensions\\pit_actor_sim\\server.py"],
       "env": {
-        "VIBE_TRADING_HOME": "D:\\path\\to\\vibe-trading\\home",
+        "VIBE_TRADING_HOME": "E:\\codex-runtime\\investment-ai\\vibe-trading\\home",
         "INVESTMENT_AI_PROJECT_ROOT": "G:\\My Drive\\work\\Investment-AI-Drive-Research",
-        "PITDB_INDEX": "local"
+        "PITDB_INDEX": "E:\\pitdb\\pit.duckdb"
       },
       "enabledTools": [
         "pit_security",
@@ -38,7 +38,7 @@ Set VIBE_TRADING_HOME to an isolated D: or E: directory and INVESTMENT_AI_PROJEC
 }
 ~~~
 
-Before the first lookup, run `python extensions/pit_actor_sim/server.py --refresh-index` with `VIBE_TRADING_HOME`, `INVESTMENT_AI_PROJECT_ROOT`, and `PITDB_INDEX=local` set. Repeat after the compact G: lake tables change. The receipt at `VIBE_TRADING_HOME/pit_index_receipt.json` records the lake signature. Before a simulation, run `python extensions/pit_actor_sim/server.py --refresh-audit` with the same environment. That preflight audits the canonical lake in memory and writes a passing receipt valid for one hour, unless the lake changes sooner. Restart Vibe-Trading after changing the operator configuration. No API key or broker authorization is needed for these tools.
+Before the first lookup, run `python extensions/pit_actor_sim/server.py --refresh-index` with `VIBE_TRADING_HOME`, `INVESTMENT_AI_PROJECT_ROOT`, and `PITDB_INDEX=E:\pitdb\pit.duckdb` set. Repeat after the compact G: lake tables change. The receipt at `VIBE_TRADING_HOME/pit_index_receipt.json` records the lake signature. Before a simulation, run `python extensions/pit_actor_sim/server.py --refresh-audit` with the same environment. That preflight audits the canonical lake in memory and writes a passing receipt valid for one hour, unless the lake changes sooner. Restart Vibe-Trading after changing the operator configuration. No API key or broker authorization is needed for these tools.
 
 ## Example research flow
 

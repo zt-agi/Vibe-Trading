@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import ntpath
 import os
 import re
 import subprocess
@@ -14,6 +15,35 @@ from pathlib import Path
 from fastmcp import FastMCP
 
 mcp = FastMCP("pit-actor-sim")
+
+# Operator storage rule (ZT 2026-09-28: everything on E:). On Windows the
+# runtime state and the disposable PIT index must live on E:; C:, D: and the
+# system drive are refused outright.
+REQUIRED_DRIVE = "E:"
+DRIVE_RULE = "ZT 2026-09-28: everything on E:"
+DEFAULT_INDEX = r"E:\pitdb\pit.duckdb"
+
+
+def windows_drive(path) -> str:
+    """Return the upper-case drive of a Windows path, ignoring a \\\\?\\ prefix."""
+    drive = ntpath.splitdrive(str(path))[0].upper()
+    for prefix in ("\\\\?\\", "\\\\.\\"):
+        if drive.startswith(prefix):
+            drive = drive[len(prefix):]
+    return drive
+
+
+def require_e_drive(path: Path, what: str) -> Path:
+    """Fail closed unless ``path`` is on E: (Windows only)."""
+    if os.name != "nt":
+        return path
+    drive = windows_drive(path)
+    system = (os.environ.get("SystemDrive") or "C:").upper()
+    if drive != REQUIRED_DRIVE or drive in ("C:", "D:", system):
+        raise ValueError(
+            f"{what} must be on {REQUIRED_DRIVE} ({DRIVE_RULE}); C:, D: and the "
+            f"system drive {system} are refused; got {path}")
+    return path
 
 
 def project() -> Path:
@@ -34,9 +64,7 @@ def runtime() -> Path:
     raw = os.environ.get("VIBE_TRADING_HOME")
     if not raw:
         raise RuntimeError("VIBE_TRADING_HOME is required")
-    path = Path(raw).resolve()
-    if os.name == "nt" and path.drive.upper() not in ("D:", "E:"):
-        raise ValueError("Runtime must be on D: or E:")
+    path = require_e_drive(Path(raw).resolve(), "Runtime (VIBE_TRADING_HOME)")
     if project() == path or project() in path.parents:
         raise ValueError("Runtime may not be stored in the shared project")
     return path
@@ -66,8 +94,9 @@ def lake_signature(tables=None) -> dict:
     """Cheap freshness token for compact tables in the canonical Parquet lake."""
     sys.path.insert(0, str(project() / "implementation" / "pit_warehouse"))
     from pitdb import config as C
-    if C.DB_PATH is None or C.DB_PATH.drive.upper() != "D:":
-        raise RuntimeError("Set PITDB_INDEX=local for the disposable D: index")
+    if C.DB_PATH is None:
+        raise RuntimeError(f"Set PITDB_INDEX={DEFAULT_INDEX} for the disposable E: index")
+    require_e_drive(C.DB_PATH, "PIT index (pitdb DB_PATH)")
     files = {}
     for table in (tables or C.PERSISTED_TABLES):
         path = C.LAKE_ROOT / table / "data.parquet"
@@ -97,6 +126,7 @@ def require_fresh_index(full: bool = False) -> None:
 def refresh_index() -> dict:
     """Rebuild only the disposable local index, then record lake freshness."""
     before = lake_signature()
+    from pitdb import config as C
     from pitdb.db import connect, rebuild_from_lake
     con = connect(wait_minutes=1)
     try:
@@ -107,7 +137,7 @@ def refresh_index() -> dict:
     if before != after:
         raise RuntimeError("Lake changed during rebuild; retry refresh")
     receipt = {"signature": after, "refreshed_at_utc": datetime.now(timezone.utc).isoformat(),
-               "index_path": "D:\\pitdb\\pit.duckdb", "rows": sum(counts.values())}
+               "index_path": str(C.DB_PATH), "rows": sum(counts.values())}
     root = runtime()
     root.mkdir(parents=True, exist_ok=True)
     target = root / "pit_index_receipt.json"
@@ -156,7 +186,7 @@ def require_fresh_audit() -> dict:
 
 def _trace(step: str) -> None:
     if os.environ.get("VIBE_EXTENSION_TRACE") == "1":
-        path = Path(os.environ["VIBE_TRADING_HOME"]) / "pit_actor_trace.log"
+        path = runtime() / "pit_actor_trace.log"
         with path.open("a", encoding="utf-8") as log:
             log.write(f"{datetime.now(timezone.utc).isoformat()} pid={os.getpid()} {step}\n")
 
@@ -271,6 +301,16 @@ def sim_input(relative: str) -> Path:
     return path
 
 
+def index_path() -> Path:
+    """Validated disposable PIT index for child processes (default E:\\pitdb\\pit.duckdb)."""
+    raw = os.environ.get("PITDB_INDEX", "").strip()
+    if raw.lower() in ("", "local", "file", "disk"):
+        raw = DEFAULT_INDEX
+    elif raw.lower() in ("memory", ":memory:", "none"):
+        raise RuntimeError(f"PITDB_INDEX={raw} is not supported here; set PITDB_INDEX={DEFAULT_INDEX}")
+    return require_e_drive(Path(raw), "PIT index (PITDB_INDEX)")
+
+
 def child_env() -> dict[str, str]:
     env = os.environ.copy()
     for key, folder in (("TEMP", "tmp"), ("TMP", "tmp"),
@@ -278,7 +318,7 @@ def child_env() -> dict[str, str]:
         path = runtime() / folder
         path.mkdir(parents=True, exist_ok=True)
         env[key] = str(path)
-    env["PITDB_INDEX"] = "local"
+    env["PITDB_INDEX"] = str(index_path())
     env["PYTHONPATH"] = str(project() / "implementation" / "pit_warehouse")
     return env
 
@@ -289,7 +329,7 @@ def run_market_actor_sim(scenario: str, forks: str, evidence: str,
     """Run the existing evidence-frozen simulator after a fresh warehouse audit.
 
     Input paths are relative to market_actor_sim. Results are uncalibrated
-    research and are saved in isolated D:/E: runtime state.
+    research and are saved in isolated E: runtime state.
     """
     if not 1000 <= rollouts <= 300000:
         raise ValueError("rollouts must be 1000..300000")
