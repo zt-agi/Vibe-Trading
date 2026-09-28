@@ -606,6 +606,33 @@ def _extract_sector(prompt: str) -> str:
     return ""
 
 
+# ZT add-on: actor_mct_team takes only an explicit scenario id and a UTC as-of.
+# Its variables deliberately carry no ticker, so the swarm's price pre-fetch
+# (src.swarm.grounding) cannot put today's bars in front of an as-of run.
+_SCENARIO_ID_RE = re.compile(
+    r"(?:\bscenario(?:_id)?\s*[:=]\s*[\"']?|config/scenario_)([a-z0-9][a-z0-9_]{1,63})", re.IGNORECASE
+)
+_RUN_ASOF_RE = re.compile(
+    r"\b(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(?::\d{2}(?:\.\d+)?)?(?:Z|[+-]\d{2}:?\d{2}))(?![\w:])"
+)
+
+
+def _actor_mct_variables(prompt: str) -> dict[str, str]:
+    """``scenario_id`` and ``run_asof`` when the prompt states them; nothing else.
+
+    A missing value stays missing: the preset's workers then stop with
+    NOT_COMPUTED rather than guess an as-of.
+    """
+    variables: dict[str, str] = {}
+    scenario = _SCENARIO_ID_RE.search(prompt)
+    if scenario:
+        variables["scenario_id"] = scenario.group(1).lower()
+    asof = _RUN_ASOF_RE.search(prompt)
+    if asof:
+        variables["run_asof"] = asof.group(1)
+    return variables
+
+
 def _snippet(prompt: str, max_len: int = 240) -> str:
     """Trim prompt for auxiliary fields."""
     s = prompt.strip()
@@ -659,6 +686,8 @@ def _build_variables(preset_name: str, prompt: str) -> dict[str, str]:
         "sector_rotation_team": {"market": market, "goal": g},
         "portfolio_review_board": {"portfolio": g, "review_period": _extract_review_period(prompt), "goal": g},
         "ml_quant_lab": {"market": market, "target_variable": _extract_target_variable(prompt), "goal": g},
+        # ZT add-on: user preset (vt_addons/swarm_presets/actor_mct_team.yaml).
+        "actor_mct_team": _actor_mct_variables(prompt),
     }
 
     return builders.get(preset_name, {"market": market, "goal": g})
