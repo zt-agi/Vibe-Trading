@@ -3,7 +3,6 @@ from __future__ import annotations
 
 import hashlib
 import json
-import ntpath
 import os
 import re
 import subprocess
@@ -14,60 +13,32 @@ from pathlib import Path
 
 from fastmcp import FastMCP
 
-mcp = FastMCP("pit-actor-sim")
+try:
+    import pit_guard
+except ImportError:  # imported as a package module rather than run as a script
+    from . import pit_guard
 
 # Operator storage rule (ZT 2026-09-28: everything on E:). On Windows the
 # runtime state and the disposable PIT index must live on E:; C:, D: and the
-# system drive are refused outright.
-REQUIRED_DRIVE = "E:"
-DRIVE_RULE = "ZT 2026-09-28: everything on E:"
-DEFAULT_INDEX = r"E:\pitdb\pit.duckdb"
+# system drive are refused outright. The guards live in pit_guard.py, shared
+# with VT's source="pitdb" backtest loader; these names are re-exported.
+from pit_guard import (  # noqa: E402,F401
+    DEFAULT_INDEX,
+    DRIVE_RULE,
+    REQUIRED_DRIVE,
+    require_e_drive,
+    windows_drive,
+)
 
-
-def windows_drive(path) -> str:
-    """Return the upper-case drive of a Windows path, ignoring a \\\\?\\ prefix."""
-    drive = ntpath.splitdrive(str(path))[0].upper()
-    for prefix in ("\\\\?\\", "\\\\.\\"):
-        if drive.startswith(prefix):
-            drive = drive[len(prefix):]
-    return drive
-
-
-def require_e_drive(path: Path, what: str) -> Path:
-    """Fail closed unless ``path`` is on E: (Windows only)."""
-    if os.name != "nt":
-        return path
-    drive = windows_drive(path)
-    system = (os.environ.get("SystemDrive") or "C:").upper()
-    if drive != REQUIRED_DRIVE or drive in ("C:", "D:", system):
-        raise ValueError(
-            f"{what} must be on {REQUIRED_DRIVE} ({DRIVE_RULE}); C:, D: and the "
-            f"system drive {system} are refused; got {path}")
-    return path
+mcp = FastMCP("pit-actor-sim")
 
 
 def project() -> Path:
-    raw = os.environ.get("INVESTMENT_AI_PROJECT_ROOT")
-    if not raw:
-        raise RuntimeError("INVESTMENT_AI_PROJECT_ROOT is required")
-    root = Path(raw).resolve(strict=True)
-    if root.name != "Investment-AI-Drive-Research" or root.parent.name != "work":
-        raise ValueError("Use the canonical work project folder")
-    for part in ("AGENTS.md", "implementation/pit_warehouse/pitdb",
-                 "market_actor_sim/run_governed_pilot.py"):
-        if not (root / part).exists():
-            raise FileNotFoundError(part)
-    return root
+    return pit_guard.validate_project_root(os.environ.get("INVESTMENT_AI_PROJECT_ROOT"))
 
 
 def runtime() -> Path:
-    raw = os.environ.get("VIBE_TRADING_HOME")
-    if not raw:
-        raise RuntimeError("VIBE_TRADING_HOME is required")
-    path = require_e_drive(Path(raw).resolve(), "Runtime (VIBE_TRADING_HOME)")
-    if project() == path or project() in path.parents:
-        raise ValueError("Runtime may not be stored in the shared project")
-    return path
+    return pit_guard.validate_runtime_root(os.environ.get("VIBE_TRADING_HOME"), project)
 
 
 def asof_utc(raw: str) -> datetime:
@@ -86,41 +57,18 @@ def row_limit(value: int) -> int:
     return value
 
 
-_READ_TABLES = ("dim_source", "dim_security", "dim_security_alias",
-                "dim_series", "fact_price_eod", "fact_observation")
+_READ_TABLES = pit_guard.READ_TABLES
 
 
 def lake_signature(tables=None) -> dict:
     """Cheap freshness token for compact tables in the canonical Parquet lake."""
-    sys.path.insert(0, str(project() / "implementation" / "pit_warehouse"))
-    from pitdb import config as C
-    if C.DB_PATH is None:
-        raise RuntimeError(f"Set PITDB_INDEX={DEFAULT_INDEX} for the disposable E: index")
-    require_e_drive(C.DB_PATH, "PIT index (pitdb DB_PATH)")
-    files = {}
-    for table in (tables or C.PERSISTED_TABLES):
-        path = C.LAKE_ROOT / table / "data.parquet"
-        try:
-            stat = path.stat()
-            files[table] = [stat.st_size, stat.st_mtime_ns]
-        except FileNotFoundError:
-            files[table] = None
-    return {"lake_root": str(C.LAKE_ROOT.resolve()), "files": files}
+    return pit_guard.lake_signature(project(), tables)
 
 
 def require_fresh_index(full: bool = False) -> None:
-    sys.path.insert(0, str(project() / "implementation" / "pit_warehouse"))
-    from pitdb import config as C
-    receipt_path = runtime() / "pit_index_receipt.json"
-    if not C.DB_PATH or not C.DB_PATH.exists() or not receipt_path.exists():
-        raise RuntimeError("PIT index unavailable; run server.py --refresh-index")
-    recorded = json.loads(receipt_path.read_text(encoding="utf-8")).get("signature", {})
-    current = lake_signature(None if full else _READ_TABLES)
-    if current["lake_root"] != recorded.get("lake_root") or any(
-        recorded.get("files", {}).get(table) != value
-        for table, value in current["files"].items()
-    ):
-        raise RuntimeError("PIT index is stale; run server.py --refresh-index")
+    pit_guard.require_fresh_index(project(), runtime(),
+                                  tables=None if full else _READ_TABLES,
+                                  signature=lake_signature)
 
 
 def refresh_index() -> dict:
@@ -140,10 +88,7 @@ def refresh_index() -> dict:
                "index_path": str(C.DB_PATH), "rows": sum(counts.values())}
     root = runtime()
     root.mkdir(parents=True, exist_ok=True)
-    target = root / "pit_index_receipt.json"
-    temporary = root / "pit_index_receipt.json.tmp"
-    temporary.write_text(json.dumps(receipt, indent=2), encoding="utf-8")
-    temporary.replace(target)
+    pit_guard.write_json_atomic(root / pit_guard.INDEX_RECEIPT, receipt)
     return receipt
 
 def refresh_audit() -> dict:
@@ -157,31 +102,24 @@ def refresh_audit() -> dict:
                          env=env, stdin=subprocess.DEVNULL, capture_output=True, text=True, timeout=300)
     if run.returncode or "OVERALL: PASS" not in run.stdout:
         raise RuntimeError("PIT audit failed: " + (run.stdout + run.stderr)[-3000:])
+    checks = pit_guard.parse_audit_checks(run.stdout)
+    if checks["failed"]:
+        raise RuntimeError("PIT audit failed: " + ", ".join(checks["failed"]))
     after = lake_signature()
     if before != after:
         raise RuntimeError("Lake changed during audit; retry preflight")
+    # checks_passed names every check the audit printed as PASS, so a consumer
+    # can require one (VT's pitdb loader requires A11 for formation mode).
     receipt = {"signature": after,
                "audited_at_utc": datetime.now(timezone.utc).isoformat(),
-               "status": "PASS", "checks": 10}
-    path = runtime() / "pit_audit_receipt.json"
-    temporary = path.with_suffix(".json.tmp")
-    temporary.write_text(json.dumps(receipt, indent=2), encoding="utf-8")
-    temporary.replace(path)
+               "status": "PASS", "checks": len(checks["passed"]),
+               "checks_passed": checks["passed"]}
+    pit_guard.write_json_atomic(runtime() / pit_guard.AUDIT_RECEIPT, receipt)
     return receipt
 
 
 def require_fresh_audit() -> dict:
-    path = runtime() / "pit_audit_receipt.json"
-    if not path.is_file():
-        raise RuntimeError("PIT audit receipt missing; run server.py --refresh-audit")
-    receipt = json.loads(path.read_text(encoding="utf-8"))
-    audited = datetime.fromisoformat(receipt["audited_at_utc"])
-    age = datetime.now(timezone.utc) - audited
-    if receipt.get("status") != "PASS" or age.total_seconds() < 0 or age.total_seconds() > 3600:
-        raise RuntimeError("PIT audit receipt expired; run server.py --refresh-audit")
-    if receipt.get("signature") != lake_signature():
-        raise RuntimeError("PIT lake changed since audit; run server.py --refresh-audit")
-    return receipt
+    return pit_guard.require_fresh_audit(runtime(), lake_signature)
 
 
 def _trace(step: str) -> None:
