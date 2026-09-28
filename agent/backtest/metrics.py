@@ -140,6 +140,11 @@ _BARS_PER_DAY = {
             },
 }
 
+# ZT add-on: the explicit-only ``pitdb`` source serves US-session end-of-day
+# bars only (its loader refuses intraday), so it needs just the daily entry.
+_TRADING_DAYS["pitdb"] = 252
+_BARS_PER_DAY["1D"]["pitdb"] = 1
+
 # Weekly and monthly bars count calendar periods, whatever the market's
 # trading days: every week and every month holds one bar (#1479).
 _CALENDAR_BARS_PER_YEAR = {"1W": 52, "1M": 12}

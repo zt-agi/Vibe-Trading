@@ -65,6 +65,15 @@ VALID_SOURCES: set[str] = {
     "auto",
 }
 
+# ZT add-on: explicit-only sources contributed by add-ons. Each is a valid
+# config source (backtest schema, agent tools) but joins no fallback chain, is
+# not one of the upstream market-data sources the READMEs count, and registers
+# its loader on the first explicit request (``get_loader_cls_with_fallback``).
+ADDON_LOADERS: dict[str, tuple[str, str]] = {
+    "pitdb": ("backtest.loaders.pitdb_loader", "PitdbLoader"),
+}
+VALID_SOURCES |= set(ADDON_LOADERS)
+
 
 def register(cls: Type[Any]) -> Type[Any]:
     """Class decorator: register a loader into the global registry.
@@ -152,8 +161,10 @@ def _ensure_registered() -> None:
 # ``BTCIRT`` request into the crypto chain would hand a USDT-quoted series back
 # as if it were Toman — a caliber error of about six orders of magnitude, not a
 # missing-data error. An unreachable Iranian endpoint must be visible.
+# ZT add-on: ``pitdb`` joins because a point-in-time run bound to an as-of must
+# never be completed with today's vendor bars from another source.
 _NO_NETWORK_FALLBACK_SOURCES: frozenset[str] = frozenset(
-    {"local", "qveris", "tickerall", "fmp", "nobitex", "wallex"}
+    {"local", "qveris", "tickerall", "fmp", "nobitex", "wallex", "pitdb"}
 )  # QVERIS-INTEGRATION
 
 
@@ -596,6 +607,27 @@ def resolve_loader(market: str) -> Any:
     )
 
 
+def _register_addon_loader(source: str) -> bool:
+    """ZT add-on: import and register an explicit-only add-on loader on request.
+
+    Add-on modules do not self-register at import, so importing one (a test,
+    a type check) never changes the registry that upstream counts derive from.
+    """
+    entry = ADDON_LOADERS.get(source)
+    if entry is None:
+        return False
+    import importlib
+
+    module_name, class_name = entry
+    try:
+        loader_cls = getattr(importlib.import_module(module_name), class_name)
+    except Exception as exc:  # noqa: BLE001 - a broken add-on is "unavailable"
+        logger.warning("add-on loader %s failed to import: %s", source, exc)
+        return False
+    register(loader_cls)
+    return True
+
+
 def get_loader_cls_with_fallback(source: str) -> Type[Any]:
     """Return a loader *class* for *source*, falling back if unavailable.
 
@@ -609,6 +641,8 @@ def get_loader_cls_with_fallback(source: str) -> Type[Any]:
         NoAvailableSourceError: If the source and all fallbacks are unavailable.
     """
     _ensure_registered()
+    if source not in LOADER_REGISTRY:
+        _register_addon_loader(source)  # ZT add-on: explicit-only, on request
     if source not in LOADER_REGISTRY:
         raise NoAvailableSourceError(f"Unknown data source: {source}")
 
@@ -639,6 +673,11 @@ def get_loader_cls_with_fallback(source: str) -> Type[Any]:
             "wallex": "Wallex's public endpoint was unreachable. It quotes in "
             "Toman (TMN) and has no substitute — check network access "
             "to api.wallex.ir.",
+            # ZT add-on
+            "pitdb": "It needs INVESTMENT_AI_PROJECT_ROOT, a fresh E: index "
+            "and a PASS audit receipt under one hour old: run "
+            "extensions/pit_actor_sim/server.py --refresh-index and "
+            "--refresh-audit (the log names the failing check).",
         }.get(source, "")
         raise NoAvailableSourceError(
             f"Data source '{source}' is unavailable and does not fall back to a "
