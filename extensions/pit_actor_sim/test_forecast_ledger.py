@@ -618,6 +618,44 @@ class ResolutionTest(LedgerCase):
         self.assertTrue(fl.rescore_from_shards(self.project)["ok"])
 
 
+class PitdbReaderTest(unittest.TestCase):
+    """The default reader maps the extension's own pit_* tool rows (no warehouse needed)."""
+
+    def test_rows_from_the_approved_pit_tools_become_observations(self):
+        import server
+        from unittest.mock import patch
+
+        calls = []
+
+        def series(series_id, asof, start_date, end_date, limit=250):
+            calls.append(("obs", series_id, asof, start_date, end_date, limit))
+            return {"rows": [{"series_id": series_id, "event_time": "2026-12-31T00:00:00", "value_num": 101.3,
+                              "value_str": None, "knowledge_time": "2026-12-31T22:30:00", "revision_seq": 0,
+                              "source_id": "eia", "pit_class": "TRUE_PIT"}]}
+
+        def price(sec_id, asof, start_date, end_date, limit=250):
+            calls.append(("price", sec_id, asof, start_date, end_date, limit))
+            return {"rows": [{"sec_id": sec_id, "event_date": "2026-09-28", "close": 503.0,
+                              "knowledge_time": "2026-09-28T21:00:00", "revision_seq": 1,
+                              "source_id": "yahoo_eod", "pit_class": "OBSERVED_PIT"}]}
+
+        asof = datetime(2027, 1, 2, 9, 0, tzinfo=UTC)
+        reader = fl.PitdbReader()
+        with patch.object(server, "pit_series_history", series), patch.object(server, "pit_price_history", price):
+            (obs,) = reader.observations("pitdb:obs/EIA:BRENT", "value_num", date(2026, 12, 21), date(2026, 12, 31), asof)
+            (bar,) = reader.observations("pitdb:price/42", "close", date(2026, 9, 26), date(2026, 10, 9), asof)
+            with self.assertRaises(fl.UnsupportedSource):
+                reader.observations("fred:DCOILBRENTEU", "value", date(2026, 1, 1), date(2026, 1, 2), asof)
+            with self.assertRaises(fl.UnsupportedSource):
+                reader.observations("pitdb:price/42", "vwap", date(2026, 9, 26), date(2026, 10, 9), asof)
+        self.assertEqual(calls[0], ("obs", "EIA:BRENT", "2027-01-02T09:00:00Z", "2026-12-21", "2026-12-31", 1000))
+        self.assertEqual(calls[1][:2], ("price", 42))
+        self.assertEqual((obs.event_date, obs.value, obs.revision_seq, obs.pit_class),
+                         (date(2026, 12, 31), 101.3, 0, "TRUE_PIT"))
+        self.assertEqual(obs.knowledge_time, datetime(2026, 12, 31, 22, 30, tzinfo=UTC))  # naive = UTC
+        self.assertEqual((bar.event_date, bar.value, bar.revision_seq), (date(2026, 9, 28), 503.0, 1))
+
+
 class ConcurrencyTest(LedgerCase):
     def test_fork_blocks_publication_until_merged(self):
         first = self.publish(self.mct_draft())
