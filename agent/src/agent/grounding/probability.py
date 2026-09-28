@@ -96,7 +96,9 @@ _WORDS = {
         "allocations exposure position positions share shares stake premium discount disruption "
         "supply demand utilization turnover ratio beta correlation overweight underweight "
         "tariff cost costs capacity output production coverage adoption impact contribution "
-        "budget cap limit stop target rate rates frequency"
+        "budget cap limit stop target rate rates frequency fall falls fell falling rose rising "
+        "climb climbs climbed jump jumps jumped slide slides slid plunge plunges plunged surge "
+        "surges surged rebound rebounds correction corrections"
     ),
     _L: (
         "bull bear base baseline tail stress escalation escalate deescalation contained "
@@ -149,7 +151,7 @@ _CJK_RE = re.compile("|".join(re.escape(term) for term in sorted(_CJK_CLASS, key
 _STOPWORDS = frozenset(
     "a an the of to in on for with and or by at as is are was were be been being this that "
     "its it from into over than then so about around roughly approximately approx near nearly "
-    "some about est estimated".split()
+    "some est estimated".split()
 )
 
 #: Function characters that do not separate a CJK figure from its concept word.
@@ -167,7 +169,7 @@ _MAX_GAP = 3
 
 _ENGLISH_NUMBERS = {
     "one": 1, "two": 2, "three": 3, "four": 4, "five": 5, "six": 6, "seven": 7, "eight": 8,
-    "nine": 9, "ten": 10, "twenty": 20, "hundred": 100, "a": 1,
+    "nine": 9, "ten": 10, "twenty": 20, "hundred": 100,
 }
 _CJK_NUMBERS = {"一": 1, "二": 2, "两": 2, "三": 3, "四": 4, "五": 5, "六": 6, "七": 7, "八": 8, "九": 9, "十": 10}
 

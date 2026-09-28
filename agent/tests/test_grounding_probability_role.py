@@ -262,6 +262,8 @@ NEGATIVE_CONTROLS = [
     "Signal threshold 0.7; stop at -8%.",
     "Backtest win rate 55%, hit rate 0.62, max drawdown 20%.",
     "In the base case, EPS grows 12%.",
+    "In the bear case the index falls 20%.",
+    "Bull case: +15% upside; bear case: -20%.",
     "Escalation (30% prob) implies a ~10% supply disruption.",
     "胜率 55%，仓位上限 5%，置信区间 95%。",
     "In 3 of 5 scenarios the book loses money.",
