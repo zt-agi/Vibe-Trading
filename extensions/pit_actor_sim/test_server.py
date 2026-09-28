@@ -43,8 +43,8 @@ class ExtensionGuardsTest(unittest.TestCase):
             root = Path(directory) / "work" / "Investment-AI-Drive-Research"
             base = root / "market_actor_sim"
             base.mkdir(parents=True)
-            (base / "scenario.yaml").write_text("scenario", encoding="utf-8")
-            (root / "AGENTS.md").write_text("governance", encoding="utf-8")
+            (base / "scenario.yaml").write_text("scenario", encoding="utf-8", newline="\n")
+            (root / "AGENTS.md").write_text("governance", encoding="utf-8", newline="\n")
             with patch.object(server, "project", return_value=root):
                 self.assertEqual(server.sim_input("scenario.yaml"), base / "scenario.yaml")
                 with self.assertRaises(ValueError):
@@ -56,7 +56,7 @@ class ExtensionGuardsTest(unittest.TestCase):
             base = root / "market_actor_sim"
             base.mkdir(parents=True)
             for name in ("scenario.yaml", "forks.json"):
-                (base / name).write_text("fixture", encoding="utf-8")
+                (base / name).write_text("fixture", encoding="utf-8", newline="\n")
             (base / "evidence.json").write_text(
                 json.dumps({"warehouse_audit": {"status": "FAIL"}}), encoding="utf-8"
             )
@@ -88,7 +88,7 @@ class ExtensionGuardsTest(unittest.TestCase):
             base = root / "market_actor_sim"
             base.mkdir(parents=True)
             for name in ("scenario.yaml", "forks.json"):
-                (base / name).write_text("fixture", encoding="utf-8")
+                (base / name).write_text("fixture", encoding="utf-8", newline="\n")
             (base / "evidence.json").write_text(
                 json.dumps({"warehouse_audit": {"status": "PASS"}}), encoding="utf-8"
             )

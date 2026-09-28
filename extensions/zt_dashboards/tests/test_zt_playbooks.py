@@ -146,4 +146,7 @@ def test_deployed_copy_is_byte_identical(slug):
     from pathlib import Path
 
     deployed = Path(os.environ["ZT_PLAYBOOK_DEPLOY_DIR"]) / f"{slug}.md"
-    assert deployed.read_bytes() == (PLAYBOOK_DIR / f"{slug}.md").read_bytes()
+    # Line endings may differ (git autocrlf on the Windows checkout vs LF on G:).
+    def _lf(b: bytes) -> bytes:
+        return b.replace(b"\r\n", b"\n")
+    assert _lf(deployed.read_bytes()) == _lf((PLAYBOOK_DIR / f"{slug}.md").read_bytes())

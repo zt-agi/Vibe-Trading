@@ -211,9 +211,9 @@ class PacketHarness(unittest.TestCase):
         self.sim = self.root / "market_actor_sim"
         (self.sim / "config").mkdir(parents=True)
         (self.sim / "sim").mkdir()
-        (self.sim / "config" / "scenario_iran_oil.yaml").write_text(SCENARIO_YAML, encoding="utf-8")
-        (self.sim / "run_governed_pilot.py").write_text("# engine fixture\n", encoding="utf-8")
-        (self.sim / "sim" / "model.py").write_text("# engine fixture\n", encoding="utf-8")
+        (self.sim / "config" / "scenario_iran_oil.yaml").write_text(SCENARIO_YAML, encoding="utf-8", newline="\n")
+        (self.sim / "run_governed_pilot.py").write_text("# engine fixture\n", encoding="utf-8", newline="\n")
+        (self.sim / "sim" / "model.py").write_text("# engine fixture\n", encoding="utf-8", newline="\n")
         self.home = base / "runtime"
         self.home.mkdir()
         self.tree = fork_rules.parse_scenario(SCENARIO_YAML)
@@ -349,7 +349,7 @@ class PacketFreezeTest(PacketHarness):
         path = self.home / "actor_packets" / sha / "packet.json"
         tampered = json.loads(path.read_text(encoding="utf-8"))
         tampered["admitted_observations"][0]["value_num"] = 0.5
-        path.write_text(json.dumps(tampered), encoding="utf-8")
+        path.write_text(json.dumps(tampered), encoding="utf-8", newline="\n")
         with self.assertRaisesRegex(RuntimeError, "no longer matches"):
             server.load_packet(sha)
 
@@ -444,7 +444,7 @@ class RoleForkSubmissionTest(PacketHarness):
     def test_changed_scenario_invalidates_the_packet(self):
         sha = self.freeze()["packet_sha256"]
         path = self.sim / "config" / "scenario_iran_oil.yaml"
-        path.write_text(SCENARIO_YAML.replace("0.35", "0.40"), encoding="utf-8")
+        path.write_text(SCENARIO_YAML.replace("0.35", "0.40"), encoding="utf-8", newline="\n")
         with self.assertRaisesRegex(RuntimeError, "changed after packet freeze"):
             self.submit(sha, make_fork(PILOT_TEMPERAMENTS[0], self.tree))
 
@@ -458,7 +458,7 @@ class PacketRunTest(PacketHarness):
                       "validation": {"crosscheck_status": "PASS"},
                       "ensemble_mc": {"oil_range": 0.6}, "mc_wilson_95": {},
                       "model_form_range": {}, "expected_reward": {}, "limitations": []}
-            (out / "pilot_result.json").write_text(json.dumps(result), encoding="utf-8")
+            (out / "pilot_result.json").write_text(json.dumps(result), encoding="utf-8", newline="\n")
             return SimpleNamespace(returncode=0, stdout="", stderr="")
         return run
 

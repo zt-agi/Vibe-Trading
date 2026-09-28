@@ -33,6 +33,13 @@ sys.dont_write_bytecode = True   # never write __pycache__ into the canonical G:
 
 from fastmcp import FastMCP  # noqa: E402
 
+# ZT add-on (Windows stdio fix): DuckDB imports pandas/numpy lazily on its first
+# result conversion. Doing that inside FastMCP's worker thread deadlocked on
+# PC1 while stdio was blocked, so import them on the main thread at startup.
+import duckdb  # noqa: E402,F401
+import numpy  # noqa: E402,F401
+import pandas  # noqa: E402,F401
+
 mcp = FastMCP("zt-ontology")
 
 MAX_ROWS = 500

@@ -523,6 +523,12 @@ def verify_packaged(dest: Path | str, *, bundled_skills_dir: Path | None = None,
     results, problems = [], []
     for sidecar_path in sorted(dest.glob(f"*/{SIDECAR_NAME}")):
         sidecar = json.loads(sidecar_path.read_text(encoding="utf-8"))
+        if not isinstance(sidecar, dict) or "provenance" not in sidecar or "name" not in sidecar:
+            # ZT add-on: a sidecar written by another add-on (e.g. ontology-hypergraph,
+            # pinned to its ontology release) is not this packager's to verify.
+            results.append({"name": sidecar_path.parent.name, "ok": True,
+                            "checks": {"foreign_sidecar_skipped": True}})
+            continue
         name = sidecar["name"]
         skill_dir = sidecar_path.parent
         prov = sidecar["provenance"]

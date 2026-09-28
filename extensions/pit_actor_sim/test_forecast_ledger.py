@@ -139,7 +139,7 @@ class LedgerCase(unittest.TestCase):
         self.scratch = self.tmp / "scratch"
         receipt = self.tmp / "pit_audit_receipt.json"
         receipt.write_text(json.dumps({"status": "PASS", "audited_at_utc": "2026-08-28T11:55:00+00:00"}),
-                           encoding="utf-8")
+                           encoding="utf-8", newline="\n")
         self.receipt = fl.pit_audit_receipt_entry(receipt)
         self.clock = Clock(PUBLISH_AT)
 
@@ -340,7 +340,7 @@ class ChainAndPublicationTest(LedgerCase):
                     fl.verify_shard_file(path)
                 with self.assertRaises(fl.ChainError):
                     fl.load_project(self.project)
-        path.write_text(original, encoding="utf-8")
+        path.write_text(original, encoding="utf-8", newline="\n")
         fl.load_project(self.project)
 
     def test_a_fully_rechained_edit_breaks_the_link_from_the_next_shard(self):
@@ -353,7 +353,7 @@ class ChainAndPublicationTest(LedgerCase):
             payloads.append({k: v for k, v in record.items() if k not in fl.CHAIN_FIELDS})
         payloads[1]["forecast"]["probability"] = 0.5  # rewrite history, then re-hash consistently
         lines, _ = fl.chain_payloads(payloads)
-        first.write_text("\n".join(lines) + "\n", encoding="utf-8")
+        first.write_text("\n".join(lines) + "\n", encoding="utf-8", newline="\n")
         fl.verify_shard_file(first)  # internally consistent on its own ...
         with self.assertRaisesRegex(fl.ChainError, "missing shard"):
             fl.load_project(self.project)  # ... but the next shard no longer links to it
@@ -368,7 +368,7 @@ class ChainAndPublicationTest(LedgerCase):
             self.publish(draft)
         self.assertEqual(Path(receipt["path"]).read_bytes(), before)
         planted = self.project / "_ledger" / "runs" / "01TESTPLANTED00000000000AB.jsonl"
-        planted.write_text("not a shard\n", encoding="utf-8")
+        planted.write_text("not a shard\n", encoding="utf-8", newline="\n")
         other = self.mct_draft()
         other["run_manifest"]["run_id"] = "01TESTPLANTED00000000000AB"
         with self.assertRaises(fl.ShardCollisionError):
@@ -668,7 +668,7 @@ class ConcurrencyTest(LedgerCase):
             integrity={"hash_scheme": fl.HASH_SCHEME, "shard_seq": 2, "prev_shard_hash": first["terminal_hash"]})
         lines, _ = fl.chain_payloads([manifest, *rows])
         forked = self.project / "_ledger" / "runs" / "01TESTFORKEDSHARD000000000.jsonl"
-        forked.write_text("\n".join(lines) + "\n", encoding="utf-8")
+        forked.write_text("\n".join(lines) + "\n", encoding="utf-8", newline="\n")
         ledger = fl.load_project(self.project)
         self.assertTrue(ledger.fork)
         self.assertEqual(len(ledger.heads), 2)
@@ -693,7 +693,7 @@ class ConcurrencyTest(LedgerCase):
         stale = {"owner": "crashed", "host": "pc2", "pid": 1, "token": "x",
                  "acquired_utc": "2026-09-01T00:00:00Z", "expires_utc": "2026-09-01T00:15:00Z"}
         lease = self.project / "_ledger" / "writer.lease"
-        lease.write_text(json.dumps(stale), encoding="utf-8")
+        lease.write_text(json.dumps(stale), encoding="utf-8", newline="\n")
         with self.assertRaisesRegex(fl.LeaseHeldError, "break-stale-lease"):
             self.publish(self.mct_draft())
         self.publish(self.mct_draft(), break_stale_lease=True)
@@ -747,9 +747,9 @@ class GuardsAndCliTest(LedgerCase):
         result_path = self.tmp / "pilot_result.json"
         spec_path = self.tmp / "spec.json"
         evidence_path = self.tmp / "evidence.json"
-        result_path.write_text(json.dumps(PILOT_RESULT), encoding="utf-8")
-        spec_path.write_text(json.dumps(spec), encoding="utf-8")
-        evidence_path.write_text(json.dumps(EVIDENCE), encoding="utf-8")
+        result_path.write_text(json.dumps(PILOT_RESULT), encoding="utf-8", newline="\n")
+        spec_path.write_text(json.dumps(spec), encoding="utf-8", newline="\n")
+        evidence_path.write_text(json.dumps(EVIDENCE), encoding="utf-8", newline="\n")
         common = ["--project", str(self.project)]
         self.assertEqual(fl.main(["record-mct", *common, "--result", str(result_path), "--spec", str(spec_path),
                                   "--evidence", str(evidence_path), "--scratch", str(self.scratch), "--dry-run"]), 0)
