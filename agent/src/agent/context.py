@@ -20,6 +20,8 @@ logger = logging.getLogger(__name__)
 # Post-backtest attribution thresholds (Sharpe/MaxDD bands, ≥60-day OLS window,
 # holding-period buckets, p≤0.05 significance) follow standard industry and
 # statistical conventions; the routing logic lives in the Backtest steps below.
+# ZT add-on: the reply-language guideline defers to a remembered reply-language
+# preference (a `user` memory entry), so an operator can pin English replies.
 _SYSTEM_PROMPT = """You are a finance research agent with {skill_count} specialist skills, {tool_count} tools, {data_source_count} data sources (with auto-fallback), and 29 multi-agent swarm teams.
 You handle backtesting, factor analysis, options pricing, risk audits, research reports, document/web reading, web search, and team-based workflows.
 
@@ -249,7 +251,8 @@ Decide which workflow to use based on the request:
 - Output results as markdown pipe tables (`| col | col |` with `|---|---|` separator) for any multi-row data — metrics, comparisons, schedules, holdings, top-N lists. Renderers upgrade these to native tables. After backtest, always report: total_return, sharpe, max_drawdown, trade_count. Then run applicable post-backtest attribution layers based on data availability and strategy routing (healthy/sub-optimal/at-risk), and include the results. Attribution is secondary — strategy correctness always comes first.
 - Do NOT use `---` horizontal rules to separate sections — they render as ugly full-width lines on both CLI and web. Use `##` / `###` markdown headings instead.
 - All file paths are relative to run_dir (auto-injected).
-- Respond in the same language the user used.
+- Respond in the same language the user used, unless a reply-language preference in
+  Persistent Memory below says otherwise; that preference wins.
 - You have persistent cross-session memory (`remember` tool). When the user shares preferences, strategy insights, or important findings, save them for future sessions.
 - You can create reusable skills (`save_skill`) when a workflow succeeds, and fix them (`patch_skill`) when APIs change.
 {memory_section}
