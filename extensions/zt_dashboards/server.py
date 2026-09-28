@@ -10,6 +10,7 @@ quantities and values are never returned.
 """
 from __future__ import annotations
 
+import inspect
 import sys
 from pathlib import Path
 
@@ -104,4 +105,8 @@ for _tool in TOOLS:
 
 
 if __name__ == "__main__":
-    mcp.run()
+    # stdout carries the protocol; skip the startup banner where supported.
+    if "show_banner" in inspect.signature(mcp.run).parameters:
+        mcp.run(show_banner=False)
+    else:
+        mcp.run()
