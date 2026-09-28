@@ -35,6 +35,8 @@ from src.agent.grounding.figures import (
     _lines_with_offsets,
     segment_bounds,
 )
+# ZT add-on: the concept-level probability role.
+from src.agent.grounding import probability as _probability
 
 import re
 
@@ -151,9 +153,10 @@ def _explicit_sign(text: str) -> int:
 def _is_plain_count(figure: Figure) -> bool:
     """Whether a figure can be a count or a parameter the model chose.
 
-    A weight, threshold, window, probability or multiplier is unchecked; a
-    figure with a currency mark is a price or an amount and is checked as
-    observed. A price column is refused before this is asked.
+    A weight, threshold, window or multiplier is unchecked; a figure with a
+    currency mark is a price or an amount and is checked as observed. A price
+    column is refused before this is asked. ZT add-on: a probability is never a
+    count; the probability role (:mod:`probability`) intercepts it first.
     """
     return not figure.currency
 
@@ -466,8 +469,19 @@ class _PolicyMixin:
             for operand in evaluated[1]
         ]
         checked_price = False
+        # ZT add-on: every figure the answer presents as a probability, whatever
+        # role it was declared under, must trace to an allowlisted model tool.
+        claims = _probability.find_claims(content, figures, block)
+        claimed = {(claim.start, claim.end): claim for claim in claims if claim.located}
+        for claim in claims:
+            if not claim.located:
+                issues.extend(self._check_probability(claim, None, block))
         for figure in figures:
             if figure.shape not in ("measured", "bare"):
+                continue
+            claim = claimed.get((figure.start, figure.end))
+            if claim is not None:
+                issues.extend(self._check_probability(claim, figure, block))
                 continue
             declaration = block.match(figure.value, figure.percent, figure.digits)
             symbol = self._figure_symbol(
@@ -1488,6 +1502,166 @@ class _PolicyMixin:
                 )
             ]
         return []
+
+    # ------------------------------------------------------------------
+    # ZT add-on: the probability role. A probability is quoted from actor
+    # simulation, a market-implied source or a mechanical model, never set by
+    # the model itself (hard rule 2026-09-28).
+    # ------------------------------------------------------------------
+
+    def _model_tool_values(self, *, probabilities_only: bool) -> list[tuple[float, str, str, str]]:
+        """``(value, call_id, tool, field)`` from allowlisted model tools.
+
+        With ``probabilities_only`` only probability-bearing leaves are kept and
+        percent-scaled ones become fractions; otherwise every numeric leaf is
+        returned, as the operands a derivation may use (chain prices, strikes).
+        """
+        rows: list[tuple[float, str, str, str]] = []
+        sources = [
+            (record.value, record.call_id, record.tool, record.field)
+            for record in self._evidence
+            if record.status == "observed" and record.value is not None
+        ] + [
+            (entry.get("value"), str(entry.get("call_id")), str(entry.get("tool")), str(entry.get("field")))
+            for entry in self._analysis_metrics
+            if entry.get("value") is not None
+        ]
+        for value, call_id, tool, field_path in sources:
+            base = _probability.tool_base(tool)
+            if base is None or not _is_number(value):
+                continue
+            value = float(value)
+            if probabilities_only:
+                if not _probability.is_probability_field(base, field_path):
+                    continue
+                scaled = {"pct", "percent"} & set(re.split(r"[^a-z]+", field_path.casefold()))
+                if scaled and 0.0 <= value <= 100.0:
+                    value /= 100.0
+                if not 0.0 <= value <= 1.0:
+                    continue
+            rows.append((value, call_id, tool, field_path))
+        return rows
+
+    def _probability_scope(
+        self, ref: str
+    ) -> tuple[list[tuple[float, str, str, str]], bool]:
+        """The model-tool probabilities a declaration's ``ref`` may quote.
+
+        Returns ``(pool, ref_is_foreign)``: a ref naming a call, tool or field
+        outside the allowlist is foreign; a ref naming nothing keeps the whole
+        pool (the loose-ref contract of :meth:`_referenced`).
+        """
+        pool = self._model_tool_values(probabilities_only=True)
+        key = (ref or "").strip()
+        if not key:
+            return pool, False
+        call_ref, _, field_ref = (part.strip() for part in key.partition("::"))
+
+        def named(call_id: str, tool: str, field_path: str) -> bool:
+            if field_ref:
+                return call_id == call_ref and (
+                    field_path == field_ref or field_path.endswith("." + field_ref)
+                )
+            return key in (call_id, tool) or field_path == key or field_path.endswith("." + key)
+
+        scoped = [row for row in pool if named(row[1], row[2], row[3])]
+        if scoped:
+            return scoped, False
+        referenced = [
+            record for record in self._evidence if named(record.call_id, record.tool, record.field)
+        ]
+        if not referenced:
+            return pool, False
+        # The ref names real evidence, but none of it is a model-tool probability.
+        return [], any(_probability.tool_base(record.tool) is None for record in referenced)
+
+    def _probability_issue(
+        self,
+        claim: "_probability.Claim",
+        figure: Figure | None,
+        role: str | None,
+        reason: str,
+        message: str,
+        code: str = "numeric_claim_conflict",
+    ) -> dict[str, Any]:
+        if figure is not None:
+            return self._figure_issue(
+                code, figure, role, None, reason, message,
+                probability_cue=claim.cue,
+                allowed_tools=sorted(_probability.PROBABILITY_TOOLS),
+            )
+        return {
+            "code": code,
+            "value": claim.text,
+            "role": role,
+            "span": [claim.start, claim.end],
+            "symbol": None,
+            "reason": reason,
+            "claim": claim.text,
+            "message": f"{claim.text} {message}.",
+            "probability_cue": claim.cue,
+            "allowed_tools": sorted(_probability.PROBABILITY_TOOLS),
+        }
+
+    def _check_probability(
+        self,
+        claim: "_probability.Claim",
+        figure: Figure | None,
+        block: FiguresBlock,
+    ) -> list[dict[str, Any]]:
+        """A probability must be a value an allowlisted model tool returned.
+
+        ``count``, ``cited`` and ``proposed`` cannot carry one: each says the
+        number came from somewhere other than a model this session ran. A
+        ``derived`` probability passes only when its note is arithmetic over
+        model-tool values (and the constants 1 and 100) that evaluates to it.
+        Anything else passes only by matching a probability-bearing leaf of an
+        allowlisted tool result at the precision it was written with.
+        """
+        declaration = _probability.declared(block, figure)
+        role = declaration.role if declaration is not None else None
+        if figure is not None and figure.currency:
+            return [self._probability_issue(
+                claim, figure, role, "probability_not_from_model_tool",
+                "is presented as a probability but carries a currency mark")]
+        if role in ("count", "cited", "proposed"):
+            return [self._probability_issue(
+                claim, figure, role, "probability_not_from_model_tool",
+                f"is a probability declared {role}; a probability may only be quoted from "
+                "run_market_actor_sim / inspect_market_actor_run, prediction_market, the "
+                "options tools or quantlib_call, never chosen or cited")]
+        pool, foreign = self._probability_scope(declaration.ref if declaration else "")
+        if foreign:
+            return [self._probability_issue(
+                claim, figure, role, "probability_ref_not_model_tool",
+                f"is a probability whose ref {declaration.ref} is not an allowlisted model tool")]
+        if role == "derived":
+            evaluated = _formula_in_note(declaration.note)
+            operands_ok = False
+            if evaluated is not None and figure is not None:
+                result, operands, _ = evaluated
+                model_values = [row[0] for row in self._model_tool_values(probabilities_only=False)]
+                operands_ok = all(
+                    operand in (1.0, 100.0) or _close_any(operand, model_values)
+                    for operand in operands
+                ) and self._result_matches(figure, result)
+            if operands_ok:
+                return []
+            return [self._probability_issue(
+                claim, figure, role, "probability_derivation_not_from_model_tool",
+                "is a derived probability whose note is not arithmetic over values an "
+                "allowlisted model tool returned")]
+        if any(_probability.matches(figure, claim.text, claim.readings, row[0]) for row in pool):
+            return []
+        # As for observed figures: no evidence of the kind at all is "unavailable",
+        # evidence that says something else is a "conflict".
+        return [self._probability_issue(
+            claim, figure, role, "probability_not_from_model_tool",
+            "is presented as a probability, but no allowlisted model tool "
+            "(run_market_actor_sim, inspect_market_actor_run, prediction_market, "
+            "get_options_chain, options_pricing, options_payoff, quantlib_call) returned it "
+            "in this session; quote one of theirs, or remove it and write NOT_COMPUTED",
+            code="numeric_claim_conflict" if pool else "numeric_claim_unavailable")]
 
     def _validate_unsourced_symbols(
         self,

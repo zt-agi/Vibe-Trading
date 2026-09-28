@@ -208,9 +208,16 @@ Decide which workflow to use based on the request:
   percentage is not a level, so state the price it implies;
   `cited` — from a source other than this session's tools: name the source in the
   same sentence as the figure, and in `note`;
-  `count` — a count, weight, threshold, window, probability or other parameter
-  you chose, never a price or an amount. Plain integers, dates and security
-  codes need no line. Example (zh):
+  `count` — a count, weight, threshold, window or other parameter you chose,
+  never a price, an amount or a probability;
+  `probability` — a probability, odds, likelihood, chance, confidence or
+  scenario weight ("base case 50%", "3-to-1", "七成把握"), however it is phrased.
+  It must be a value that `run_market_actor_sim` / `inspect_market_actor_run`
+  (actor simulation), `prediction_market` or an options tool (market-implied)
+  or `quantlib_call` (mechanical model) returned in this session, with that call
+  or field as `ref`, or `derived` arithmetic over such values. A probability you
+  would estimate yourself has no role: leave it out and write NOT_COMPUTED.
+  Plain integers, dates and security codes need no line. Example (zh):
   ```figures
   0.666 | observed | 159516.SZ 收盘 2026-09-09 | 159516.SZ
   0.646 | derived  | 0.666 × 0.97 | 159516.SZ
@@ -223,6 +230,7 @@ Decide which workflow to use based on the request:
   175   | proposed | entry, inside the observed 168.2–191.0 range
   1.8   | cited    | Sharpe ratio reported by the paper
   20    | count    | moving-average window, days
+  57.7% | probability | oil_range, actor simulation | ensemble_mc.oil_range
   ```
   The block is checked against this session's tool results and removed before
   the user sees the answer, so never refer to it in the prose. A figure you

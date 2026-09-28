@@ -90,6 +90,10 @@ _CORRECTION_REASONS = {
     "proposed_not_a_price": "a proposed level is a price, not a percentage; state the price it implies",
     "symbol_mismatch": "it is declared for one instrument but the sentence writes it about another",
     "citation_not_visible": "its source is not named on the figure's own line, and the note is stripped before the user reads the answer",
+    # ZT add-on: the probability role.
+    "probability_not_from_model_tool": "it is a probability, and no allowlisted model tool (run_market_actor_sim, inspect_market_actor_run, prediction_market, an options tool, quantlib_call) returned it; quote their value or remove it and write NOT_COMPUTED",
+    "probability_ref_not_model_tool": "it is a probability and its ref {ref} is not an allowlisted model tool",
+    "probability_derivation_not_from_model_tool": "it is a derived probability whose operands are not all values an allowlisted model tool returned",
 }
 
 
@@ -198,11 +202,14 @@ class _ReleaseMixin:
                 "End the answer with a ```figures``` block declaring every number that "
                 "carries a decimal point, a percent sign, a currency mark or a table "
                 "cell, one per line as `value | role | note | ref`, where role is one "
-                "of observed / derived / proposed / cited / count.",
+                "of observed / derived / proposed / cited / count / probability.",
                 "observed must appear in the tool results; derived needs a note that is "
                 "the arithmetic itself, with one operand this session observed; "
                 "proposed must be derived or lie inside the observed price range; "
-                "cited needs a source in its note; count is not checked.",
+                # ZT add-on: count never carries a probability; the probability role.
+                "cited needs a source in its note; count is not checked but never "
+                "carries a probability; probability must be a value an allowlisted "
+                "model tool returned.",
                 "Reuse the exact locked symbol and venue.",
                 "Do not attach figures to a symbol no tool call in this session handled; "
                 "report it as not retrieved instead.",

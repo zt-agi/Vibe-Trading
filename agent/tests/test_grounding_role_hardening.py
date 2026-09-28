@@ -138,16 +138,29 @@ def test_a_count_cannot_carry_a_currency_mark(tmp_path: Path, prose: str, row: s
         ("建议持有 3.0 个月。", "3.0 | count | 月"),
         ("仓位上限 5%。", "5% | count | 仓位参数"),
         ("权重 0.30。", "0.30 | count | 权重"),
-        ("主观判断上涨概率 70%。", "70% | count | 主观判断"),
     ],
 )
 def test_a_parameter_without_a_currency_mark_is_a_count(
     tmp_path: Path, prose: str, row: str
 ) -> None:
-    """A window, weight, threshold, multiplier or probability is the model's own choice."""
+    """A window, weight, threshold or multiplier is the model's own choice."""
     result = _ledger(tmp_path, MARKET_A).validate_final_answer(HDR + "\n" + prose + _block(ROW, row))
 
     assert result.valid is True, result.issues
+
+
+def test_a_probability_is_not_a_count(tmp_path: Path) -> None:
+    """ZT add-on (2026-09-28): the model may not choose an outcome probability.
+
+    This case moved out of the count parametrisation above: "主观判断上涨概率
+    70%" declared count used to pass unchecked.
+    """
+    result = _ledger(tmp_path, MARKET_A).validate_final_answer(
+        HDR + "\n主观判断上涨概率 70%。" + _block(ROW, "70% | count | 主观判断")
+    )
+
+    assert result.valid is False
+    assert _reasons(result) == ["probability_not_from_model_tool"]
 
 
 def test_a_plain_integer_is_a_count(tmp_path: Path) -> None:

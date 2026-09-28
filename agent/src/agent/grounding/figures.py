@@ -27,8 +27,9 @@ from src.agent.grounding.identity import _CANONICAL_SYMBOL_RE
 #: evidence tolerance (``policies._TOLERANCE``); the digits written narrow it further.
 ROUNDED_BAND = 0.005
 
-#: The five roles a declaration may carry (spec §2).
-ROLES = ("observed", "derived", "proposed", "cited", "count")
+#: The roles a declaration may carry (spec §2). ZT add-on: ``probability``,
+#: a value an allowlisted model tool returned (see :mod:`probability`).
+ROLES = ("observed", "derived", "proposed", "cited", "count", "probability")
 
 #: The info string that marks the declaration block.
 BLOCK_LANGUAGE = "figures"

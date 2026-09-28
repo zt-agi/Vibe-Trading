@@ -2782,9 +2782,12 @@ def test_forecast_probability_is_declared_not_phrased(tmp_path: Path) -> None:
     """A forecast is a role the model declares, not a word it writes.
 
     "预计" used to buy a clause-wide exemption for free, so any measured
-    metric written after it went unchecked. The figure must now be declared
-    ``count`` — the role for a number this run does not claim to have measured
-    — and an undeclared one is reported.
+    metric written after it went unchecked. An undeclared one is reported.
+
+    ZT add-on (2026-09-28): a probability is no longer a ``count``. The model
+    may not set an outcome probability itself, so a subjective 70% declared
+    ``count`` is refused; the same figure quoted from an allowlisted model tool
+    (here ``prediction_market``) passes.
     """
     ledger = GroundingLedger(
         run_dir=tmp_path,
@@ -2795,11 +2798,25 @@ def test_forecast_probability_is_declared_not_phrased(tmp_path: Path) -> None:
         "预计明日上涨概率 70%，波动率可能放大。\n\n"
         "```figures\n70% | count | 主观判断，非本会话测得\n```"
     )
-    assert declared.valid is True, declared.issues
+    assert declared.valid is False
+    assert [issue["reason"] for issue in declared.issues] == ["probability_not_from_model_tool"]
 
     undeclared = ledger.validate_final_answer("预计明日上涨概率 70%，波动率可能放大。")
     assert undeclared.valid is False
     assert [issue["value"] for issue in undeclared.issues] == ["70%"]
+
+    ledger.ingest_tool_result(
+        tool_name="prediction_market",
+        arguments={"mode": "market", "ids": ["1"]},
+        result=json.dumps({"status": "ok", "markets": [{"outcomes": [
+            {"outcome": "Yes", "implied_probability": 0.70, "implied_probability_pct": 70.0}]}]}),
+        call_id="pm1",
+        success=True,
+    )
+    quoted = ledger.validate_final_answer(
+        "预测市场隐含明日上涨概率 70%。\n\n```figures\n70% | probability | 预测市场隐含 | pm1\n```"
+    )
+    assert quoted.valid is True, quoted.issues
 
 
 def test_valid_price_does_not_launder_unsupported_analysis_metric(
