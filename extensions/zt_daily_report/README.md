@@ -48,7 +48,7 @@ Add an entry beside `pit-actor-sim` in the runtime's `agent.json`:
 }
 ~~~
 
-Vibe-Trading names the tools `mcp_zt_daily_report_<tool>`. The swarm preset `premarket_brief_team` and the `premarket-brief` playbook call them by those names. Optional environment: `ZT_DAILY_REPORT_PACKAGE` (package folder override), `PIT_ACTOR_SIM_SERVER` (path to the sibling server), `ZT_SKILLS_DIR` (skills to hash into the manifest).
+Vibe-Trading names the tools `mcp_zt_daily_report_<tool>`. The swarm preset `premarket_brief_team` and the `zt-premarket-brief` playbook call them by those names. Optional environment: `ZT_DAILY_REPORT_PACKAGE` (package folder override), `PIT_ACTOR_SIM_SERVER` (path to the sibling server), `ZT_SKILLS_DIR` (skills to hash into the manifest).
 
 ## Tests
 
