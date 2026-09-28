@@ -110,6 +110,9 @@ def write_run_card(
         card["structured_metrics"] = structured
     if "validation" in metrics:
         card["validation"] = metrics["validation"]
+    pit = _pit_block(config)  # ZT add-on
+    if pit is not None:
+        card["pit"] = pit
 
     card = _json_safe(card)
     json_path = run_dir / "run_card.json"
@@ -155,6 +158,58 @@ def _file_hash(path: Path) -> str:
 
 def _backtest_summary(config: Mapping[str, Any]) -> dict[str, Any]:
     return {key: config.get(key) for key in BACKTEST_SUMMARY_KEYS if key in config}
+
+
+def _pit_block(config: Mapping[str, Any]) -> dict[str, Any] | None:
+    """ZT add-on: the run's ``pit`` binding and what its loader served under it.
+
+    ``config["pit"]`` is the declared binding; ``config["_run_card_pit"]`` is
+    the loader's provenance (as-of, PIT classes, max knowledge time, backfill
+    share, lake signature, audit receipt, per-symbol detail).
+    """
+    declared = config.get("pit")
+    served = config.get("_run_card_pit")
+    if declared is None and served is None:
+        return None
+    block: dict[str, Any] = dict(served) if isinstance(served, Mapping) else {}
+    if isinstance(declared, Mapping):
+        block["declared"] = dict(declared)
+    return block
+
+
+def _render_pit_markdown(pit: Mapping[str, Any]) -> list[str]:
+    """ZT add-on: the Point-in-time section of run_card.md."""
+    lines = ["", "## Point-in-time"]
+    skip = {"symbols", "warehouse", "declared", "warnings", "accepted_moves"}
+    lines.extend(
+        f"- {key}: {value}" for key, value in pit.items()
+        if key not in skip and not isinstance(value, (Mapping, list))
+    )
+    classes = pit.get("pit_classes")
+    if isinstance(classes, list):
+        lines.append(f"- pit_classes: {', '.join(str(c) for c in classes) or 'none'}")
+    warehouse = pit.get("warehouse")
+    if isinstance(warehouse, Mapping):
+        audit = warehouse.get("audit") if isinstance(warehouse.get("audit"), Mapping) else {}
+        lines.append(
+            f"- warehouse: lake `{warehouse.get('lake_signature_sha256')}`, audit "
+            f"{audit.get('status')} at {audit.get('audited_at_utc')} "
+            f"({', '.join(audit.get('checks_passed') or []) or 'checks not recorded'}), "
+            f"schema `{warehouse.get('schema_sha256')}`"
+        )
+    symbols = pit.get("symbols")
+    if isinstance(symbols, Mapping):
+        for code, rec in symbols.items():
+            if isinstance(rec, Mapping):
+                lines.append(
+                    f"- {code} ({rec.get('role')}): sec_id {rec.get('sec_id')}, "
+                    f"{rec.get('bars')} bars {rec.get('first_bar')}..{rec.get('last_bar')}, "
+                    f"max knowledge {rec.get('max_knowledge_time_utc')}, "
+                    f"backfill share {rec.get('backfill_share')}"
+                )
+    for warning in pit.get("warnings") or []:
+        lines.append(f"- warning: {warning}")
+    return lines
 
 
 def _scalar_metrics(metrics: Mapping[str, Any]) -> dict[str, Any]:
@@ -407,6 +462,8 @@ def _render_markdown(card: Mapping[str, Any]) -> str:
     lines.extend(["", "## Data Sources"])
     data_sources = card.get("data_sources", [])
     lines.extend(f"- {source}" for source in data_sources) if data_sources else lines.append("- None recorded.")
+    if isinstance(card.get("pit"), Mapping):  # ZT add-on
+        lines.extend(_render_pit_markdown(card["pit"]))
 
     lines.extend(["", "## Metrics"])
     metric_values = card.get("metrics", {})

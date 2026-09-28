@@ -12,6 +12,7 @@ from typing import Any, Optional
 import pandas as pd
 
 from backtest.loaders.base import resample_bars, source_interval
+from backtest.loaders.registry import is_no_network_fallback_source
 from backtest.loaders.yfinance_loader import DataLoader as YfinanceLoader
 from backtest.metrics import bar_returns, buy_and_hold_return
 
@@ -84,8 +85,10 @@ def resolve_benchmark(
         explicit:       Override ticker (e.g. "SPY" passed via config).
         loader:         Loader of the configured data source. When given, the
                         benchmark is fetched through it first, falling back to
-                        yfinance if it yields no data — except ``local``,
-                        which fails closed to keep offline runs offline.
+                        yfinance if it yields no data — except for sources that
+                        never fall back to the network (``local``, ``pitdb``,
+                        ...), which fail closed to keep their runs on their
+                        own data.
 
     Returns:
         BenchmarkResult with return series and total return, or None if no
@@ -95,7 +98,9 @@ def resolve_benchmark(
     if ticker is None:
         return None
 
-    offline = source == "local"
+    # ZT add-on: every no-network-fallback source (local, pitdb, ...), not
+    # only local, keeps its benchmark off yfinance.
+    offline = is_no_network_fallback_source(source)
     if offline and getattr(loader, "name", None) != source:
         # The runtime fallback chain in fetch_data_map() may have swapped in a
         # network loader while config["source"] still says local — never fetch

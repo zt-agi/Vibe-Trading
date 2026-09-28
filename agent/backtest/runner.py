@@ -73,6 +73,9 @@ class DataFetchResult:
     # Mixed-caliber warning for the served basket (#1301), None when every
     # served symbol shares one comparable caliber (or none is measurable).
     caliber_warning: str | None = None
+    # ZT add-on: point-in-time provenance from a loader bound to the run's
+    # ``pit`` block (pitdb), for the run card; None for every other source.
+    pit: Dict[str, Any] | None = None
 
 
 class BacktestConfigSchema(BaseModel):
@@ -919,6 +922,10 @@ def _get_loader(source: str):
     try:
         return get_loader_cls_with_fallback(source)
     except NoAvailableSourceError:
+        # ZT add-on: a source that must never degrade (local, pitdb, ...) is not
+        # swapped for tushare here either; its "unavailable" error must surface.
+        if is_no_network_fallback_source(source):
+            raise
         # Ultimate fallback for unknown sources
         if "tushare" in LOADER_REGISTRY:
             return LOADER_REGISTRY["tushare"]
@@ -1280,6 +1287,8 @@ def main(run_dir: Path) -> None:
     config["_run_card_effective_sources"] = fetch_result.effective_sources
     if fetch_result.caliber_warning:
         config["_run_card_caliber_warning"] = fetch_result.caliber_warning
+    if fetch_result.pit:  # ZT add-on: the run card's `pit` block
+        config["_run_card_pit"] = fetch_result.pit
     interval = config.get("interval", "1D")
     if not data_map:
         print(json.dumps({"error": "No data fetched"}))
@@ -1308,6 +1317,11 @@ def main(run_dir: Path) -> None:
     # Reuse that exact snapshot so provider costs and run-card provenance stay
     # aligned with the data consumed by the engine.
     loader = _AutoLoader(data_map)
+    # ZT add-on: a bound loader (pitdb) keeps serving the run from the same
+    # snapshot, and reads anything else -- the benchmark -- under its binding.
+    engine_loader = getattr(fetch_result.loader, "engine_loader", None)
+    if callable(engine_loader):
+        loader = engine_loader(data_map)
 
     if engine_type == "options":
         from backtest.engines.options_portfolio import run_options_backtest
@@ -1781,6 +1795,11 @@ def fetch_data_map(config: dict) -> DataFetchResult:
 
     caliber_stamps: dict[str, tuple[str, str]] = {}
     if source == "auto":
+        if config.get("pit") is not None:  # ZT add-on
+            raise ValueError(
+                "source='auto' cannot honour a `pit` block; name a source whose "
+                "loader binds it (source='pitdb')"
+            )
         data_map = _fetch_auto(codes, config, interval)
         codes = bare
         loader: Any = _AutoLoader(data_map)
@@ -1795,6 +1814,7 @@ def fetch_data_map(config: dict) -> DataFetchResult:
         codes = _normalize_codes(codes, source)
         primary_source = source
         loader = _get_loader(source)()
+        _bind_run_context(loader, config)  # ZT add-on
         # ``_get_loader`` may hand back a *different* loader when the requested
         # one is unavailable (e.g. an optional package like pykrx is missing, so
         # the kr_equity chain resolves to yahoo). Record who actually served the
@@ -1918,6 +1938,7 @@ def fetch_data_map(config: dict) -> DataFetchResult:
     )
     if caliber_warning:
         logger.warning("%s", caliber_warning)
+    provenance = getattr(loader, "run_provenance", None)  # ZT add-on
     return DataFetchResult(
         data_map=data_map,
         codes=codes,
@@ -1925,7 +1946,25 @@ def fetch_data_map(config: dict) -> DataFetchResult:
         loader=loader,
         effective_sources=used_sources,
         caliber_warning=caliber_warning,
+        pit=provenance() if callable(provenance) else None,
     )
+
+
+def _bind_run_context(loader: Any, config: dict) -> None:
+    """ZT add-on: hand the run's config to a loader that binds run context.
+
+    The pitdb loader serves nothing until it is bound to the run's ``pit``
+    block. A ``pit`` block is a point-in-time claim, so a loader that cannot
+    bind it may not serve the run either.
+    """
+    bind = getattr(loader, "bind_run_config", None)
+    if callable(bind):
+        bind(config)
+    elif config.get("pit") is not None:
+        raise ValueError(
+            f"a `pit` block needs a loader that binds it; "
+            f"{getattr(loader, 'name', loader)!r} does not (use source='pitdb')"
+        )
 
 
 def _sanitize_data_map(data_map: dict) -> dict:
