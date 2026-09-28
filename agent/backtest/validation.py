@@ -1,9 +1,16 @@
 """Statistical validation for backtest results.
 
-Three independent tools:
-  - Monte Carlo permutation test: is the strategy significantly better than random?
-  - Bootstrap Sharpe CI: how stable is the risk-adjusted return?
-  - Walk-Forward analysis: is performance consistent across time windows?
+Descriptive checks (each says what it measures -- ZT add-on relabel):
+  - ``trade_order_permutation`` (was ``monte_carlo``): shuffles the order of the
+    realised trade PnLs. It tests whether the PATH (sequencing, drawdown) is
+    unusual for these trades, not whether the strategy has an edge: the sum of
+    the PnLs never changes under a permutation.
+  - ``bootstrap``: Sharpe confidence interval; iid by default, or a stationary
+    block bootstrap (``block_len``) that keeps serial dependence.
+  - ``sequential_windows_no_refit`` (was ``walk_forward``): the one equity curve
+    cut into sequential windows. Nothing is refit per window, so it is a
+    consistency check, not a walk-forward test.
+The old keys stay accepted as deprecated aliases and are echoed in results.
 
 Usage: called automatically by BaseEngine.run_backtest when config[\"validation\"]
 is present, or invoked directly on backtest outputs.
@@ -23,11 +30,26 @@ import pandas as pd
 from backtest.metrics import effective_bars_per_year
 from backtest.models import TradeRecord
 
+#: Deprecated validation keys -> the canonical names they alias (ZT add-on).
+DEPRECATED_VALIDATION_KEYS = {
+    "monte_carlo": "trade_order_permutation",
+    "walk_forward": "sequential_windows_no_refit",
+}
 
-# ─── Monte Carlo Permutation Test ───
+
+# ─── Trade-order permutation test (formerly "Monte Carlo") ───
 
 
-def monte_carlo_test(
+def monte_carlo_test(*args: Any, **kwargs: Any) -> Dict[str, Any]:
+    """Deprecated alias of :func:`trade_order_permutation_test`.
+
+    The name overstated the test: shuffling trade order tests the path, not
+    the edge. Kept so existing callers and ``validation.json`` readers work.
+    """
+    return trade_order_permutation_test(*args, **kwargs)
+
+
+def trade_order_permutation_test(
     trades: List[TradeRecord],
     initial_capital: float,
     n_simulations: int = 1000,
@@ -37,7 +59,8 @@ def monte_carlo_test(
     """Shuffle trade PnL order to test path significance.
 
     Null hypothesis: the observed Sharpe / max-drawdown is no better than
-    a random ordering of the same trades.
+    a random ordering of the same trades. The PnL total is invariant under
+    the shuffle, so this measures sequencing (path, drawdown), not edge.
 
     Args:
         trades: Completed round-trip trades from backtest.
@@ -86,6 +109,8 @@ def monte_carlo_test(
 
     sim_arr = np.array(sim_sharpes)
     result = {
+        "test": "trade_order_permutation",
+        "measures": "path ordering of the realised trades, not edge",
         "actual_sharpe": round(actual["sharpe"], 4),
         "actual_max_dd": round(actual["max_dd"], 4),
         "p_value_sharpe": round(sharpe_count / n_simulations, 4),
@@ -139,12 +164,32 @@ def _path_metrics(
 # ─── Bootstrap Sharpe CI ───
 
 
+def stationary_bootstrap_indices(
+    n: int, mean_block_len: float, rng: np.random.Generator
+) -> np.ndarray:
+    """One Politis-Romano stationary-bootstrap resample of positions ``0..n-1``.
+
+    Blocks start at uniform random positions, run with geometric lengths of
+    mean ``mean_block_len`` and wrap around the sample end, so serial
+    dependence inside a block survives the resample (an iid draw destroys it
+    and understates the Sharpe's uncertainty for autocorrelated returns).
+    """
+    starts_new = rng.random(n) < 1.0 / mean_block_len
+    starts_new[0] = True
+    random_starts = rng.integers(0, n, size=n)
+    block_id = np.cumsum(starts_new) - 1
+    block_first = np.flatnonzero(starts_new)
+    offsets = np.arange(n) - block_first[block_id]
+    return (random_starts[block_first][block_id] + offsets) % n
+
+
 def bootstrap_sharpe_ci(
     equity_curve: pd.Series,
     n_bootstrap: int = 1000,
     confidence: float = 0.95,
     bars_per_year: int = 252,
     seed: int = 42,
+    block_len: float | None = None,
 ) -> Dict[str, Any]:
     """Resample daily returns to estimate Sharpe confidence interval.
 
@@ -154,11 +199,22 @@ def bootstrap_sharpe_ci(
         confidence: Confidence level (e.g. 0.95 for 95% CI).
         bars_per_year: Annualisation factor.
         seed: Random seed.
+        block_len: ``None`` (default) resamples iid, exactly as before; a
+            number > 1 uses the stationary block bootstrap with that mean
+            block length in bars (ZT add-on).
 
     Returns:
         Dict with observed_sharpe, ci_lower, ci_upper, median_sharpe,
-        prob_positive (fraction of samples with Sharpe > 0).
+        prob_positive (fraction of samples with Sharpe > 0), and ``method``.
     """
+    if block_len is not None and (
+        isinstance(block_len, bool)
+        or not isinstance(block_len, Real)
+        or not math.isfinite(float(block_len))
+        or block_len < 1
+    ):
+        return {"error": f"block_len must be a number >= 1, got {block_len}"}
+    stationary = block_len is not None and float(block_len) > 1.0
     if isinstance(n_bootstrap, bool) or not isinstance(n_bootstrap, Integral) or n_bootstrap < 1:
         return {"error": f"n_bootstrap must be >= 1, got {n_bootstrap}"}
     if (
@@ -180,7 +236,10 @@ def bootstrap_sharpe_ci(
     rng = np.random.default_rng(seed)
     boot_sharpes = []
     for _ in range(n_bootstrap):
-        sample = rng.choice(returns, size=len(returns), replace=True)
+        if stationary:
+            sample = returns[stationary_bootstrap_indices(len(returns), float(block_len), rng)]
+        else:
+            sample = rng.choice(returns, size=len(returns), replace=True)
         boot_sharpes.append(_sharpe(sample, bars_per_year))
 
     arr = np.array(boot_sharpes)
@@ -197,7 +256,10 @@ def bootstrap_sharpe_ci(
         "prob_positive": round(prob_pos, 4),
         "confidence": confidence,
         "n_bootstrap": n_bootstrap,
+        "method": "stationary_block" if stationary else "iid",
     }
+    if stationary:
+        result["block_len"] = float(block_len)
     if n_bootstrap <= 20_000:
         result["sharpe_samples"] = [round(float(s), 4) for s in boot_sharpes]
     return result
@@ -208,10 +270,19 @@ def _sharpe(returns: np.ndarray, bars_per_year: int = 252) -> float:
     return float(returns.mean() / (std + 1e-10) * np.sqrt(bars_per_year))
 
 
-# ─── Walk-Forward Analysis ───
+# ─── Sequential windows, no refit (formerly "Walk-Forward") ───
 
 
-def walk_forward_analysis(
+def walk_forward_analysis(*args: Any, **kwargs: Any) -> Dict[str, Any]:
+    """Deprecated alias of :func:`sequential_windows_no_refit`.
+
+    Nothing is refit per window, so the old name promised a walk-forward
+    test this never ran. Kept so existing callers and readers work.
+    """
+    return sequential_windows_no_refit(*args, **kwargs)
+
+
+def sequential_windows_no_refit(
     equity_curve: pd.Series,
     trades: List[TradeRecord],
     n_windows: int = 5,
@@ -220,6 +291,8 @@ def walk_forward_analysis(
     """Split backtest into sequential windows, check consistency.
 
     Each window is evaluated independently (returns normalised to window start).
+    The strategy is NOT refit per window: this is a consistency check of one
+    fixed equity curve, not walk-forward optimisation.
 
     Args:
         equity_curve: Equity time series.
@@ -280,6 +353,7 @@ def walk_forward_analysis(
     profitable_windows = sum(1 for r in returns_list if r > 0)
 
     return {
+        "test": "sequential_windows_no_refit",
         "n_windows": n_windows,
         "windows": windows,
         "profitable_windows": profitable_windows,
@@ -304,9 +378,12 @@ def run_validation(
     """Run configured validation checks.
 
     Reads from config["validation"]:
-      - monte_carlo: {n_simulations, seed}
-      - bootstrap: {n_bootstrap, confidence, seed}
-      - walk_forward: {n_windows}
+      - trade_order_permutation (deprecated alias: monte_carlo): {n_simulations, seed}
+      - bootstrap: {n_bootstrap, confidence, seed, block_len}
+      - sequential_windows_no_refit (deprecated alias: walk_forward): {n_windows}
+
+    A permutation or window result is written under both its canonical key and
+    the deprecated one, so existing ``validation.json`` readers keep working.
 
     Args:
         config: Backtest config (must contain "validation" key).
@@ -328,15 +405,18 @@ def run_validation(
     if bars_per_year is None:
         bars_per_year = effective_bars_per_year(equity_curve.index)
 
-    if "monte_carlo" in v_cfg:
-        mc_cfg = v_cfg["monte_carlo"] if isinstance(v_cfg["monte_carlo"], dict) else {}
-        results["monte_carlo"] = monte_carlo_test(
+    mc_key = _requested_key(v_cfg, "trade_order_permutation")
+    if mc_key is not None:
+        mc_cfg = v_cfg[mc_key] if isinstance(v_cfg[mc_key], dict) else {}
+        permutation = trade_order_permutation_test(
             trades,
             initial_capital,
             n_simulations=mc_cfg.get("n_simulations", 1000),
             seed=mc_cfg.get("seed", 42),
             bars_per_year=bars_per_year,
         )
+        results["trade_order_permutation"] = permutation
+        results["monte_carlo"] = permutation  # deprecated alias, same payload
 
     if "bootstrap" in v_cfg:
         bs_cfg = v_cfg["bootstrap"] if isinstance(v_cfg["bootstrap"], dict) else {}
@@ -346,18 +426,36 @@ def run_validation(
             n_bootstrap=bs_cfg.get("n_bootstrap", 1000),
             confidence=bs_cfg.get("confidence", 0.95),
             seed=bs_cfg.get("seed", 42),
+            block_len=bs_cfg.get("block_len"),
         )
 
-    if "walk_forward" in v_cfg:
-        wf_cfg = v_cfg["walk_forward"] if isinstance(v_cfg["walk_forward"], dict) else {}
-        results["walk_forward"] = walk_forward_analysis(
+    wf_key = _requested_key(v_cfg, "sequential_windows_no_refit")
+    if wf_key is not None:
+        wf_cfg = v_cfg[wf_key] if isinstance(v_cfg[wf_key], dict) else {}
+        windows = sequential_windows_no_refit(
             equity_curve,
             trades,
             n_windows=wf_cfg.get("n_windows", 5),
             bars_per_year=bars_per_year,
         )
+        results["sequential_windows_no_refit"] = windows
+        results["walk_forward"] = windows  # deprecated alias, same payload
+
+    used = sorted(k for k in DEPRECATED_VALIDATION_KEYS if isinstance(v_cfg, dict) and k in v_cfg)
+    if used:
+        results["deprecated_keys"] = {k: DEPRECATED_VALIDATION_KEYS[k] for k in used}
 
     return results
+
+
+def _requested_key(v_cfg: Any, canonical: str) -> str | None:
+    """The key a validation block uses for ``canonical``: itself or its deprecated alias."""
+    if not isinstance(v_cfg, dict):
+        return None
+    if canonical in v_cfg:
+        return canonical
+    legacy = next((old for old, new in DEPRECATED_VALIDATION_KEYS.items() if new == canonical), None)
+    return legacy if legacy in v_cfg else None
 
 
 # ─── Standalone CLI ───
@@ -492,10 +590,14 @@ def main(run_dir: Path) -> Dict[str, Any]:
     equity = _load_equity(run_dir)
     trades = _load_trades(run_dir)
 
+    permutation = monte_carlo_test(trades, initial_capital)
+    windows = walk_forward_analysis(equity, trades)
     results = {
-        "monte_carlo": monte_carlo_test(trades, initial_capital),
+        "trade_order_permutation": permutation,
+        "monte_carlo": permutation,  # deprecated alias, same payload
         "bootstrap": bootstrap_sharpe_ci(equity),
-        "walk_forward": walk_forward_analysis(equity, trades),
+        "sequential_windows_no_refit": windows,
+        "walk_forward": windows,  # deprecated alias, same payload
     }
 
     out = run_dir / "artifacts" / "validation.json"
