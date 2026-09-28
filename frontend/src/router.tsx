@@ -34,6 +34,10 @@ const AlphaZoo = lazy(() =>
 const OptionsLab = lazy(() =>
   import("@/pages/OptionsLab").then((m) => ({ default: m.OptionsLab })),
 );
+// ZT add-on: read-only research dashboards (extensions/zt_dashboards).
+const ZtDashboards = lazy(() =>
+  import("@/pages/ZtDashboards").then((m) => ({ default: m.ZtDashboards })),
+);
 
 function PageLoader() {
   return (
@@ -71,6 +75,7 @@ export const router = createBrowserRouter([
       { path: "/alpha-zoo/bench", element: wrap(AlphaZoo) },
       { path: "/alpha-zoo/compare", element: wrap(AlphaZoo) },
       { path: "/alpha-zoo/:alphaId", element: wrap(AlphaZoo) },
+      { path: "/zt", element: wrap(ZtDashboards) }, // ZT add-on
     ],
   },
 ]);

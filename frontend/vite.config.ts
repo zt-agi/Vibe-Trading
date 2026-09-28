@@ -54,6 +54,8 @@ export default defineConfig(({ mode }) => {
         // Overrides the plain PROXY_PATHS entry above.
         "/options": apiProxyWithHtmlFallback,
         "^/alpha(?:/|$)": apiProxy,
+        // ZT add-on: /zt is an SPA page; only its API sub-paths proxy.
+        "^/zt/(?:reports|snapshot)(?:/|$)": apiProxy,
       },
     },
     build: {
