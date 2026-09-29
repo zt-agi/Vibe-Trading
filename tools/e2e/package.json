@@ -1,0 +1,16 @@
+{
+  "name": "vt-e2e",
+  "private": true,
+  "version": "0.1.0",
+  "description": "ZT add-on: Playwright UI QA gate for the Vibe-Trading web UI (container fixture server or a real server)",
+  "type": "module",
+  "engines": {
+    "node": ">=22.22.0"
+  },
+  "scripts": {
+    "test": "playwright test"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.56.1"
+  }
+}
