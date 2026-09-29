@@ -1,0 +1,24 @@
+{
+  "schema": "zt-research-rank-configs/1",
+  "note": "Named inputs for rank_pit_signals. ranker_config is relative to implementation/alpha_signal_pit_ranker; an observations_csv path is relative to the project root. Every input is cut at the call's asof: a row is kept only if its available, decision and target times are all at or before asof.",
+  "configs": {
+    "rank01_market_prices": {
+      "description": "Rank-01 daily price features (momentum 5/21, reversal 5, range position, breakout 63, RSI 14, volatility 21, volume shock 21) over the pitdb Yahoo EOD universe as known at asof (price_asof), target = next-session open-to-close log return. The ranker's own adapter labels these REVISED_VALUE, so results stay PIT_RESEARCH_ONLY.",
+      "input": {
+        "kind": "pitdb_eod",
+        "adapter": "eod_market_prices_to_signal_panel",
+        "lookback_days": 550,
+        "asset_classes": ["equity", "etf"]
+      },
+      "ranker_config": "examples/default_config.json"
+    },
+    "rank01_market_prices_retained": {
+      "description": "The retained 2026-08-06 Rank-01 observation panel (outputs/market_prices_rank01/normalized_signal_observations.csv), re-ranked on the rows known at asof.",
+      "input": {
+        "kind": "observations_csv",
+        "path": "implementation/alpha_signal_pit_ranker/outputs/market_prices_rank01/normalized_signal_observations.csv"
+      },
+      "ranker_config": "examples/default_config.json"
+    }
+  }
+}
