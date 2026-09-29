@@ -106,7 +106,7 @@ export function Reports() {
           </button>
         </section>
 
-        <section className="grid gap-3 lg:grid-cols-[minmax(220px,1fr)_160px_150px_150px_170px]">
+        <section className="grid gap-3 md:grid-cols-2 xl:grid-cols-[minmax(0,1fr)_160px_150px_150px_170px]">
           <label className="relative block">
             <Search className="pointer-events-none absolute start-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
             <input
@@ -120,7 +120,7 @@ export function Reports() {
           <select
             value={statusFilter}
             onChange={(event) => setStatusFilter(event.target.value)}
-            className="rounded-md border bg-background px-3 py-2 text-sm"
+            className="min-w-0 w-full rounded-md border bg-background px-3 py-2 text-sm"
             aria-label={t("settings.status")}
           >
             {statusOptions.map((status) => (
@@ -133,20 +133,20 @@ export function Reports() {
             type="date"
             value={startDate}
             onChange={(event) => setStartDate(event.target.value)}
-            className="rounded-md border bg-background px-3 py-2 text-sm"
+            className="min-w-0 w-full rounded-md border bg-background px-3 py-2 text-sm"
             aria-label={t("reports.startDate")}
           />
           <input
             type="date"
             value={endDate}
             onChange={(event) => setEndDate(event.target.value)}
-            className="rounded-md border bg-background px-3 py-2 text-sm"
+            className="min-w-0 w-full rounded-md border bg-background px-3 py-2 text-sm"
             aria-label={t("reports.endDate")}
           />
           <select
             value={sortMode}
             onChange={(event) => setSortMode(event.target.value as SortMode)}
-            className="rounded-md border bg-background px-3 py-2 text-sm"
+            className="min-w-0 w-full rounded-md border bg-background px-3 py-2 text-sm"
             aria-label={t("reports.sort")}
           >
             <option value="created_desc">{t("reports.sortNewest")}</option>

@@ -4,8 +4,10 @@
 // Optional: VT_DESKTOP_PROMPT_SMOKE=1 permits one tool-free Ollama exchange in the isolated QA home.
 import assert from "node:assert/strict";
 import { createRequire } from "node:module";
-import { mkdir, readFile, copyFile, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, copyFile, writeFile } from "node:fs/promises";
 import path from "node:path";
+import { randomBytes } from "node:crypto";
+import { fileURLToPath } from "node:url";
 import { connect } from "node:net";
 
 function onE(value, label) {
@@ -19,22 +21,48 @@ const originalHome = onE(process.env.VIBE_TRADING_HOME, "VT home");
 const executable = onE(process.env.VIBE_TRADING_EXECUTABLE, "backend executable");
 const require = createRequire(dependency);
 const { _electron: electron } = require(dependency);
-const profile = path.join(output, "userData");
-const qaHome = path.join(output, "qa-home");
-const screenshots = path.join(output, "screenshots");
-await mkdir(screenshots, { recursive: true });
-await mkdir(profile, { recursive: true });
-await mkdir(path.join(qaHome, "live"), { recursive: true });
-// Preserve the configured provider/MCP settings; import no existing sessions or user chat.
-for (const file of [".env", "agent.json", "pit_audit_receipt.json", "pit_index_receipt.json"]) {
-  try { await copyFile(path.join(originalHome, file), path.join(qaHome, file)); }
-  catch (error) { if (error.code !== "ENOENT") throw error; }
-}
-await writeFile(path.join(qaHome, "live", "HALT"), "Desktop QA: live trading remains halted.\n");
-const envText = await readFile(path.join(qaHome, ".env"), "utf8");
-const setting = name => envText.match(new RegExp(`^${name}=(.*)$`, "m"))?.[1]?.trim().replace(/^['"]|['"]$/g, "");
+await mkdir(output, { recursive: true });
+const runRoot = await mkdtemp(path.join(output, "run-"));
+let profile = path.join(runRoot, "userData");
+let qaHome = path.join(runRoot, "qa-home");
+const screenshots = path.join(runRoot, "screenshots");
+const envText = await readFile(path.join(originalHome, ".env"), "utf8");
+const unquote = value => value.trim().replace(/^(['"])(.*)\1$/, "$2");
+const settings = Object.fromEntries([...envText.matchAll(/^([A-Z][A-Z0-9_]*)=(.*)$/gm)].map(m => [m[1], unquote(m[2])]));
+const setting = name => settings[name];
 const secrets = [...envText.matchAll(/^([A-Z_]*(?:KEY|TOKEN|SECRET|PASSWORD)[A-Z_]*)=(.+)$/gm)]
-  .map(match => match[2].trim()).filter(Boolean);
+  .flatMap(match => [match[2].trim(), unquote(match[2])]).filter(Boolean);
+const safeSettings = ["LANGCHAIN_PROVIDER", "LANGCHAIN_MODEL_NAME", "OLLAMA_BASE_URL", "TOKEN_THRESHOLD", "TIMEOUT_SECONDS"];
+assert.equal(setting("LANGCHAIN_PROVIDER"), "ollama", "QA imports only local Ollama configuration");
+assert.match(setting("OLLAMA_BASE_URL") || "http://127.0.0.1:11434", /^http:\/\/(127\.0\.0\.1|localhost)(:\d+)?\/?$/, "Ollama must be local");
+async function prepareHome(home, data, mcp = true) {
+  await mkdir(data, { recursive: true });
+  await mkdir(path.join(home, "live"), { recursive: true });
+  await writeFile(path.join(home, "live", "HALT"), "Desktop QA: live trading remains halted.\n");
+  await writeFile(path.join(home, ".env"), safeSettings.filter(k => settings[k]).map(k => `${k}=${settings[k]}`).concat([
+    `API_AUTH_KEY=${randomBytes(32).toString("hex")}`, "VIBE_ORDER_APPROVAL=required", "VIBE_TRADING_ENABLE_SHELL_TOOLS=false", "VIBE_TRADING_ENABLE_SCHEDULER=false", "VIBE_TRADING_CHANNELS_AUTO_START=false", ""]).join("\n"));
+  // Only this project's read-only dashboard MCP registration is retained for preflight.
+  const source = JSON.parse(await readFile(path.join(originalHome, "agent.json"), "utf8"));
+  const dashboard = source.mcpServers?.["zt-dashboards"];
+  const config = { mcpServers: mcp && dashboard ? { "zt-dashboards": { command: dashboard.command, args: dashboard.args,
+    env: { INVESTMENT_AI_PROJECT_ROOT: process.env.INVESTMENT_AI_PROJECT_ROOT },
+    enabledTools: ["daily_snapshot", "project_reports", "pit_inventory"] } } : {} };
+  await writeFile(path.join(home, "agent.json"), JSON.stringify(config));
+  if (mcp) for (const file of ["pit_audit_receipt.json", "pit_index_receipt.json"]) {
+    try { await copyFile(path.join(originalHome, file), path.join(home, file)); }
+    catch (error) { if (error.code !== "ENOENT") throw error; }
+  }
+}
+await mkdir(screenshots, { recursive: true });
+await prepareHome(qaHome, profile);
+function launchEnv(home, data, extra = {}) {
+  const allowed = ["SystemRoot", "WINDIR", "COMSPEC", "PATH", "PATHEXT", "PROCESSOR_ARCHITECTURE", "NUMBER_OF_PROCESSORS", "PYTHONPATH", "PYTHONUTF8", "PYTHONUNBUFFERED", "PYTHONPYCACHEPREFIX", "INVESTMENT_AI_PROJECT_ROOT", "PITDB_INDEX", "VIBE_TRADING_EXECUTABLE", "VIBE_TRADING_PLAYBOOK_DIR", "WEASYPRINT_DLL_DIRECTORIES", "OPENBLAS_NUM_THREADS", "OMP_NUM_THREADS", "MKL_NUM_THREADS"];
+  return { ...Object.fromEntries(allowed.filter(k => process.env[k]).map(k => [k, process.env[k]])),
+    HOME: home, USERPROFILE: home, APPDATA: data, LOCALAPPDATA: data,
+    TEMP: runRoot, TMP: runRoot, TMPDIR: runRoot, NO_PROXY: "127.0.0.1,localhost",
+    VIBE_TRADING_HOME: home, VIBE_TRADING_DESKTOP_TEST_USER_DATA: data, VIBE_TRADING_DESKTOP_LOCALE: "en",
+    VIBE_TRADING_ENABLE_SHELL_TOOLS: "false", VIBE_TRADING_ENABLE_SCHEDULER: "false", VIBE_TRADING_CHANNELS_AUTO_START: "false", ...extra };
+}
 function redact(value) {
   let text = String(value);
   for (const secret of secrets) text = text.split(secret).join("<redacted>");
@@ -83,6 +111,52 @@ async function portOpen(origin) {
 }
 function alive(pid) { try { process.kill(pid, 0); return true; } catch { return false; } }
 let app, page, mainPid, logsPath;
+let stopEvidencePath;
+const resourceFailures = [];
+function watchPage(target) {
+  target.on("pageerror", error => receipt.page_errors.push(redact(error.message)));
+  target.on("console", message => {
+    if (message.type() === "error") {
+      const location = message.location();
+      receipt.console_errors.push({ text: redact(message.text()), location: { ...location, url: redact(location.url) }, page_url: redact(target.url()) });
+    }
+  });
+  target.on("response", response => { if (response.status() >= 400) resourceFailures.push({ url: redact(response.url()), status: response.status(), type: response.request().resourceType() }); });
+}
+async function captureLifecycle() {
+  mainPid = app.process().pid;
+  receipt.main_pids ??= []; receipt.main_pids.push(mainPid);
+  stopEvidencePath = path.join(runRoot, `shutdown-${mainPid}.jsonl`);
+  ({ logsPath } = await app.evaluate(async ({ app }, args) => {
+    const manager = await import(args.module);
+    const fs = await import("node:fs");
+    const original = manager.BackendManager.prototype.stop;
+    manager.BackendManager.prototype.stop = async function (...params) {
+      const result = await original.apply(this, params);
+      fs.appendFileSync(args.evidence, JSON.stringify(result) + "\n");
+      return result;
+    };
+    return { logsPath: app.getPath("logs") };
+  }, { module: new URL(`file:///${path.join(appDir, "dist", "backend-manager.js").replaceAll("\\", "/")}`).href, evidence: stopEvidencePath }));
+}
+async function cleanup() {
+  assert.ok(app && Number.isInteger(mainPid), "launched main PID must be captured");
+  try { await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0]?.close()); } catch {}
+  await poll(async () => !alive(mainPid), 30000);
+  const records = (await readFile(stopEvidencePath, "utf8")).trim().split("\n").filter(Boolean).map(JSON.parse);
+  assert.ok(records.length > 0, "native BackendManager.stop evidence is required");
+  for (const evidence of records) {
+    assert.ok(evidence.backendPid && evidence.watchdogPid, "positive backend and watchdog identity required");
+    assert.equal(evidence.backendExited, true); assert.equal(evidence.watchdogExited, true); assert.equal(evidence.listenerClosed, true);
+    assert.equal(alive(evidence.backendPid), false); assert.equal(alive(evidence.watchdogPid), false);
+  }
+  for (const origin of receipt.backend_origins) await poll(async () => !(await portOpen(origin)), 10000);
+  const day = new Date().toISOString().slice(0, 10).replaceAll("-", "");
+  const log = await readFile(path.join(logsPath, `desktop-${day}.log`), "utf8");
+  assert.ok(!log.includes("incomplete evidence"));
+  assert.ok(!secrets.some(secret => log.includes(secret)), "secret found in desktop log");
+  return { mainPid, main_exited: true, native_shutdown: records, listeners_closed: receipt.backend_origins.length };
+}
 async function screenshot(name) {
   const filename = path.join(screenshots, `${name}.png`);
   await page.screenshot({ path: filename });
@@ -120,17 +194,14 @@ async function traverse(method, direction) {
 await save();
 try {
   const launched = await check("native-launch-and-first-content", async () => {
-    const env = { ...process.env, VIBE_TRADING_HOME: qaHome,
-      VIBE_TRADING_DESKTOP_TEST_USER_DATA: profile, VIBE_TRADING_DESKTOP_LOCALE: "en" };
+    const env = launchEnv(qaHome, profile);
     delete env.ELECTRON_RUN_AS_NODE;
     app = await electron.launch({ executablePath: path.join(appDir, "node_modules", "electron", "dist", "electron.exe"),
       args: ["--lang=en-US", appDir], cwd: appDir, env, timeout: 60000 });
+    await captureLifecycle();
     page = await app.firstWindow({ timeout: 60000 });
     page.setDefaultTimeout(15000);
-    page.on("pageerror", error => receipt.page_errors.push(redact(error.message)));
-    page.on("console", message => {
-      if (message.type() === "error") receipt.console_errors.push(redact(message.text()));
-    });
+    watchPage(page);
     await page.waitForURL(/^http:\/\/127\.0\.0\.1:\d+\//, { timeout: 90000 });
     await page.locator("#root > *").first().waitFor();
     await page.locator("textarea").first().waitFor({ state: "visible", timeout: 30000 });
@@ -151,7 +222,8 @@ try {
     await page.getByRole("heading", { name: "ZT research dashboards", exact: true }).waitFor();
     await page.getByTestId("zt-preflight-counts").waitFor({ timeout: 120000 });
     const counts = await page.getByTestId("zt-preflight-counts").innerText();
-    assert.match(counts, /\d+ OK.*\d+ WARN.*0 FAIL/);
+    const failureCount = Number(counts.match(/(?:^|\s)(\d+) FAIL(?:\s|$)/)?.[1]);
+    assert.equal(failureCount, 0, `preflight failures: ${counts}`);
     await screenshot("zt-preflight");
     return { counts, path: new URL(page.url()).pathname };
   });
@@ -216,6 +288,9 @@ try {
     const summary = frame.locator("summary").first();
     const exercisedDetail = Boolean(await summary.count());
     if (exercisedDetail) { await summary.click(); await summary.press("Enter"); }
+    await poll(async () => { const box = await viewer.boundingBox(); return box && box.y >= 0 && box.y + 44 < (await page.evaluate(() => innerHeight)); });
+    await iframe.screenshot({ path: path.join(screenshots, "report-frame-content.png") });
+    receipt.screenshots.push(path.join(screenshots, "report-frame-content.png"));
     await screenshot("report-frame");
     await page.keyboard.press("Control+r");
     await page.getByRole("region", { name: "Report viewer", exact: true }).locator("iframe").waitFor({ timeout: 120000 });
@@ -231,9 +306,37 @@ try {
     await page.waitForURL(url => url.pathname === "/", { timeout: 5000 });
     return { back: "/zt", forward: "/" };
   });
+  await check("desktop-renderer-bridge-backend-recovery", async () => {
+    const oldOrigin = await rememberOrigin();
+    await page.evaluate(() => { void window.vibeDesktop.restartBackend(); });
+    await page.waitForURL(/^http:\/\/127\.0\.0\.1:\d+\//, { timeout: 90000 });
+    await poll(async () => new URL(page.url()).origin !== oldOrigin, 90000);
+    await page.locator("textarea").first().waitFor({ timeout: 30000 });
+    const newOrigin = await rememberOrigin();
+    assert.notEqual(oldOrigin, newOrigin, "restart must own a new private listener");
+    await poll(async () => !(await portOpen(oldOrigin)));
+    await screenshot("recovered-first-content");
+    return { oldOrigin, newOrigin, old_listener_closed: true, bridge_restart: true };
+  });
   if (process.env.VT_DESKTOP_PROMPT_SMOKE === "1") {
     await check("real-ollama-prompt-through-desktop", async () => {
-      assert.equal(receipt.provider, "ollama", "safe prompt smoke requires existing Ollama configuration");
+      await check("preflight-phase-cleanup", cleanup);
+      await app.close().catch(() => undefined); app = undefined;
+      qaHome = path.join(runRoot, "no-tools-home"); profile = path.join(runRoot, "no-tools-profile");
+      await prepareHome(qaHome, profile, false);
+      const seamDir = path.join(runRoot, "no-tools-seam"); await mkdir(seamDir);
+      await copyFile(path.join(path.dirname(fileURLToPath(import.meta.url)), "no_tools_sitecustomize.py"), path.join(seamDir, "sitecustomize.py"));
+      const toolEvidence = path.join(runRoot, "no-tools-evidence.jsonl");
+      app = await electron.launch({ executablePath: path.join(appDir, "node_modules", "electron", "dist", "electron.exe"),
+        args: ["--lang=en-US", appDir], cwd: appDir, env: launchEnv(qaHome, profile, {
+          PYTHONPATH: [seamDir, "E:\\codex-runtime\\investment-ai\\vibe-trading\\agent", "E:\\codex-runtime\\investment-ai\\vibe-trading\\launcher", process.env.PYTHONPATH].filter(Boolean).join(path.delimiter), VT_QA_NO_TOOLS_EVIDENCE: toolEvidence }), timeout: 60000 });
+      await captureLifecycle(); page = await app.firstWindow({ timeout: 60000 });
+      watchPage(page);
+      await page.waitForURL(/^http:\/\/127\.0\.0\.1:\d+\//, { timeout: 90000 });
+      await page.locator("textarea").first().waitFor({ state: "visible", timeout: 30000 });
+      await rememberOrigin();
+      const boot = (await readFile(toolEvidence, "utf8")).trim().split("\n").map(JSON.parse);
+      assert.ok(boot.some(r => r.phase === "installed" && r.mcp_servers === 0 && r.shell_enabled === false), "empty registry fixture must install before prompt");
       await page.locator('a[href="/"]').first().click();
       const input = page.locator("textarea").first();
       await input.fill("Desktop QA only. Do not call any tools, read or write any files, make predictions, or place orders. Reply with exactly: VT_DESKTOP_QA_OK");
@@ -242,42 +345,31 @@ try {
         const text = await page.locator("main").innerText();
         return text.split("VT_DESKTOP_QA_OK").length >= 3;
       }, 120000);
+      const proofs = (await readFile(toolEvidence, "utf8")).trim().split("\n").map(JSON.parse);
+      assert.ok(proofs.some(r => r.phase === "registry" && r.tools === 0), "registry was never built empty");
+      assert.ok(proofs.some(r => r.phase === "definitions" && r.tools === 0), "bound tool definitions were never verified");
+      assert.ok(proofs.every(r => r.tools === undefined || r.tools === 0));
+      const sessions = await page.evaluate(async () => { const response = await fetch("/sessions"); if (!response.ok) throw new Error(`sessions HTTP ${response.status}`); return response.json(); });
+      assert.ok(Array.isArray(sessions) && sessions.length === 1 && sessions[0].session_id, "fresh fixture must contain exactly one real session");
+      const messages = await page.evaluate(async sid => { const response = await fetch(`/sessions/${sid}/messages`); if (!response.ok) throw new Error(`messages HTTP ${response.status}`); return response.json(); }, sessions[0].session_id);
+      assert.ok(Array.isArray(messages), "real message list required");
+      assert.ok(messages.some(message => message.role === "assistant" && message.content.trim() === "VT_DESKTOP_QA_OK"), "completed assistant response required");
+      const trails = messages.flatMap(message => message.tool_trail ?? []);
+      assert.equal(trails.length, 0, "prompt produced tool events");
       await screenshot("ollama-response");
       return { marker: "VT_DESKTOP_QA_OK", provider: receipt.provider, model: receipt.model,
-        session_location: qaHome, tools_requested: false };
+        session_location: qaHome, tools_available: 0, tool_events: 0, isolation_proofs: proofs };
     });
   } else receipt.rows.push({ id: "real-ollama-prompt-through-desktop", status: "UNRUN", reason: "Set VT_DESKTOP_PROMPT_SMOKE=1 to authorize isolated QA output." });
 
-  await check("desktop-renderer-bridge-backend-recovery", async () => {
-    const oldOrigin = await rememberOrigin();
-    await page.evaluate(() => window.vibeDesktop.restartBackend());
-    await page.waitForURL(/^http:\/\/127\.0\.0\.1:\d+\//, { timeout: 90000 });
-    await page.locator("textarea").first().waitFor({ timeout: 30000 });
-    const newOrigin = await rememberOrigin();
-    assert.notEqual(oldOrigin, newOrigin, "restart must own a new private listener");
-    await poll(async () => !(await portOpen(oldOrigin)));
-    await screenshot("recovered-first-content");
-    return { oldOrigin, newOrigin, old_listener_closed: true, bridge_restart: true };
-  });
 } catch (error) {
   receipt.fatal = redact(error.message);
 } finally {
-  if (app) await check("close-window-and-owned-backend-cleanup", async () => {
-    await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0]?.close());
-    await poll(async () => !alive(mainPid), 30000);
-    for (const origin of receipt.backend_origins) await poll(async () => !(await portOpen(origin)), 10000);
-    let backendPids = [];
-    if (logsPath) {
-      const day = new Date().toISOString().slice(0, 10).replaceAll("-", "");
-      const log = await readFile(path.join(logsPath, `desktop-${day}.log`), "utf8");
-      backendPids = [...log.matchAll(/backend started pid=(\d+)/g)].map(match => Number(match[1]));
-      for (const pid of backendPids) assert.equal(alive(pid), false, `owned backend PID ${pid} remains alive`);
-      assert.ok(!log.includes("incomplete evidence"), "desktop reported incomplete shutdown");
-      assert.ok(!secrets.some(secret => log.includes(secret)), "secret found in desktop log");
-    }
-    return { mainPid, main_exited: true, backendPids, listeners_closed: receipt.backend_origins.length };
-  });
-  if (app && mainPid && alive(mainPid)) await app.close().catch(() => undefined);
+  if (app) {
+    try { await check("close-window-and-owned-backend-cleanup", cleanup); }
+    finally { await app.close().catch(() => undefined); }
+  }
+  receipt.resource_failures = resourceFailures;
   receipt.finished_at = new Date().toISOString();
   receipt.rows.push({ id: "clean-renderer-console", status: receipt.page_errors.length || receipt.console_errors.length ? "FAIL" : "PASS",
     evidence: { page_errors: receipt.page_errors.length, console_errors: receipt.console_errors.length } });
