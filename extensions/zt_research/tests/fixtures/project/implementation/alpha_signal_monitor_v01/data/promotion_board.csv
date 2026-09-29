@@ -1,0 +1,8 @@
+rank_by_history,signal_id,signal_name,family,n_obs,cadence,eligible,status,verdict,verdict_date,selection_rule,G0_prereg,A1_baseline,A2_sample_split,A3_t_ge_3,A4_materiality,A5_robustness,A6_replication,A7_decay_watch
+1,SIG-A,Synthetic daily flow ratio,positioning,251,daily,YES,NOT_STARTED,,,"ranked by history length, not by current z",NOT_RUN,NOT_RUN,NOT_RUN,NOT_RUN,NOT_RUN,NOT_RUN,NOT_RUN,NOT_RUN
+2,SIG-B,Synthetic option volume,positioning,240,daily,YES,IN_PROGRESS,,,"ranked by history length, not by current z",PASS,PASS,NOT_RUN,NOT_RUN,NOT_RUN,NOT_RUN,NOT_RUN,NOT_RUN
+3,SIG-C,Synthetic spread,relative_strength,200,daily,YES,DONE,FAIL,2026-09-20,"ranked by history length, not by current z",PASS,PASS,PASS,FAIL,NOT_RUN,NOT_RUN,NOT_RUN,NOT_RUN
+4,SIG-D,Synthetic PPI y/y,pricing,180,monthly,YES,DONE,ADMITTED,2026-09-21,"ranked by history length, not by current z",PASS,PASS,PASS,PASS,PASS,PASS,PASS,NOT_RUN
+5,SIG-E,Synthetic exports y/y,demand_flows,170,monthly,YES,DONE,ADMITTED,2026-09-22,"ranked by history length, not by current z",PASS,PASS,PASS,PASS,PASS,PASS,PASS,SCHEDULED
+6,SIG-F,Synthetic sentiment,sentiment,160,weekly,YES,DONE,PASS,2026-09-23,"ranked by history length, not by current z",PASS,PASS,PASS,PASS,PASS,NOT_RUN,PASS,NOT_RUN
+7,SIG-G,Synthetic issuance,capital_supply,7,monthly,NO_INSUFFICIENT_HISTORY,NOT_STARTED,,,"ranked by history length, not by current z",NOT_RUN,NOT_RUN,NOT_RUN,NOT_RUN,NOT_RUN,NOT_RUN,NOT_RUN,NOT_RUN
