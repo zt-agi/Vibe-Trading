@@ -1,0 +1,14 @@
+{
+  "schema_version": 1,
+  "profile": {
+    "id": "zt-paper",
+    "connector": "zt-paper",
+    "label": "ZT Paper · SIMULATED (no broker account)",
+    "environment": "paper",
+    "readonly": true,
+    "capabilities": ["account.read", "positions.read", "orders.read", "quotes.read"],
+    "notes": "Simulated USD account ZT-PAPER. Reads only here: orders become proposals that a human approves in /zt/approvals, and fills use the latest completed-session close."
+  },
+  "entrypoint": "adapter.py",
+  "auth": {"type": "none", "fields": []}
+}
