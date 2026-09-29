@@ -1,18 +1,57 @@
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { MemoryRouter } from "react-router";
 import { ApiError, ztReportPath } from "@/lib/api";
-import { ZT_REPORT_SANDBOX, ZtDashboards, parseReportLinkMessage } from "../ZtDashboards";
+import { ZT_REPORT_SANDBOX, ZtDashboards, isDesktopShell, parseReportLinkMessage } from "../ZtDashboards";
+import type { ZtPreflight } from "@/lib/ztPreflight";
 
 const apiMock = vi.hoisted(() => ({
   listZtReports: vi.fn(),
   getZtSnapshot: vi.fn(),
   ztReportUrl: vi.fn(),
 }));
+const preflightMock = vi.hoisted(() => ({ fetchZtPreflight: vi.fn() }));
+const authMock = vi.hoisted(() => ({ withFreshTicket: vi.fn() }));
 
 vi.mock("@/lib/api", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/lib/api")>();
   return { ...actual, api: apiMock };
 });
+vi.mock("@/lib/ztPreflight", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/lib/ztPreflight")>();
+  return { ...actual, fetchZtPreflight: preflightMock.fetchZtPreflight };
+});
+vi.mock("@/lib/apiAuth", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/lib/apiAuth")>();
+  return { ...actual, withFreshTicket: authMock.withFreshTicket };
+});
+
+const PREFLIGHT: ZtPreflight = {
+  tool: "zt_preflight",
+  generated_at: "2026-09-29T15:00:00Z",
+  overall: "FAIL",
+  counts: { OK: 2, WARN: 1, FAIL: 1 },
+  note: "read-only",
+  checks: [
+    { id: "llm.provider", label: "LLM provider", status: "OK", summary: "ollama · gpt-oss:20b", fix: "", detail: { provider: "ollama" } },
+    {
+      id: "llm.ollama",
+      label: "Ollama",
+      status: "FAIL",
+      summary: "Not reachable at http://localhost:11434.",
+      fix: "Start it with bin\\start_ollama.ps1.",
+      detail: { base_url: "http://localhost:11434", models: ["gpt-oss:20b"] },
+    },
+    { id: "live.halt", label: "Live kill switch (live\\HALT)", status: "OK", summary: "Not tripped.", fix: "", detail: {} },
+    {
+      id: "pit.audit_receipt",
+      label: "PIT audit receipt",
+      status: "WARN",
+      summary: "PASS, 5 h old: expired for simulations (1 h window), lake unchanged.",
+      fix: "Run server.py --refresh-audit.",
+      detail: { age_hours: 5 },
+    },
+  ],
+};
 
 function envelope<T>(tool: string, data: T, status: "FRESH" | "STALE" | "MISSING" = "FRESH") {
   return {
@@ -110,6 +149,8 @@ function renderPage(initial = "/zt") {
 
 describe("ZT dashboards page", () => {
   beforeEach(() => {
+    preflightMock.fetchZtPreflight.mockReset().mockResolvedValue(PREFLIGHT);
+    authMock.withFreshTicket.mockReset();
     apiMock.listZtReports.mockReset().mockResolvedValue(REPORTS);
     apiMock.getZtSnapshot.mockReset().mockResolvedValue(SNAPSHOT);
     apiMock.ztReportUrl
@@ -211,10 +252,14 @@ describe("ZT dashboards page", () => {
     const spaFallback = new ApiError("Expected JSON from /zt/reports, got text/html", 200);
     apiMock.listZtReports.mockRejectedValue(spaFallback);
     apiMock.getZtSnapshot.mockRejectedValue(new ApiError("Not Found", 404));
+    preflightMock.fetchZtPreflight.mockRejectedValue(new ApiError("Not Found", 404));
     renderPage();
-    const alerts = await screen.findAllByRole("alert");
-    expect(alerts).toHaveLength(2);
+    await waitFor(() => expect(screen.getAllByRole("alert")).toHaveLength(3));
+    const alerts = screen.getAllByRole("alert");
     expect(alerts[0]).toHaveTextContent("extensions/zt_dashboards/launch_api.py");
+    expect(within(screen.getByTestId("zt-preflight")).getByRole("alert")).toHaveTextContent(
+      "routes are not registered",
+    );
   });
 
   it("surfaces a server configuration error", async () => {
@@ -223,6 +268,101 @@ describe("ZT dashboards page", () => {
     );
     renderPage();
     expect(await screen.findByText(/INVESTMENT_AI_PROJECT_ROOT is required/)).toBeInTheDocument();
+  });
+});
+
+describe("ZT pre-flight panel", () => {
+  beforeEach(() => {
+    preflightMock.fetchZtPreflight.mockReset().mockResolvedValue(PREFLIGHT);
+    apiMock.listZtReports.mockReset().mockResolvedValue(REPORTS);
+    apiMock.getZtSnapshot.mockReset().mockResolvedValue(SNAPSHOT);
+  });
+
+  it("shows every check at the top, problems first, with how to fix", async () => {
+    renderPage();
+    const panel = await screen.findByTestId("zt-preflight");
+    expect(within(panel).getByRole("heading", { name: /Pre-flight/ })).toHaveTextContent("FAIL");
+    expect(within(panel).getByTestId("zt-preflight-counts")).toHaveTextContent("2 OK · 1 WARN · 1 FAIL");
+    const rows = within(panel).getAllByTestId("zt-preflight-check");
+    expect(rows.map((row) => row.getAttribute("data-check-id"))).toEqual([
+      "llm.ollama",
+      "pit.audit_receipt",
+      "llm.provider",
+      "live.halt",
+    ]);
+    expect(rows[0]).toHaveTextContent("How to fix: Start it with bin\\start_ollama.ps1.");
+    expect(rows[2]).not.toHaveTextContent("How to fix");
+    expect(within(rows[0]).getByText("models")).toBeInTheDocument();
+    expect(within(rows[0]).getByText('["gpt-oss:20b"]')).toBeInTheDocument();
+    // The panel sits above the snapshot and the report list.
+    const snapshotHeading = screen.getByRole("heading", { name: "Daily snapshot" });
+    expect(panel.compareDocumentPosition(snapshotHeading) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  it("can hide the OK checks", async () => {
+    renderPage();
+    const panel = await screen.findByTestId("zt-preflight");
+    fireEvent.click(within(panel).getByRole("button", { name: "Hide OK checks" }));
+    expect(within(panel).getAllByTestId("zt-preflight-check")).toHaveLength(2);
+    fireEvent.click(within(panel).getByRole("button", { name: "Show all checks" }));
+    expect(within(panel).getAllByTestId("zt-preflight-check")).toHaveLength(4);
+  });
+
+  it("reloads with the Refresh button", async () => {
+    renderPage();
+    await screen.findByTestId("zt-preflight");
+    expect(preflightMock.fetchZtPreflight).toHaveBeenCalledTimes(1);
+    fireEvent.click(screen.getByRole("button", { name: "Refresh" }));
+    await waitFor(() => expect(preflightMock.fetchZtPreflight).toHaveBeenCalledTimes(2));
+  });
+
+  it("asks for the key when the server refuses", async () => {
+    preflightMock.fetchZtPreflight.mockRejectedValue(new ApiError("API key required", 401));
+    renderPage();
+    const panel = await screen.findByTestId("zt-preflight");
+    const alert = await within(panel).findByRole("alert");
+    expect(alert).toHaveTextContent("API key required");
+    expect(alert).toHaveTextContent("Paste the API key in Settings");
+  });
+});
+
+describe("ZT desktop shell", () => {
+  beforeEach(() => {
+    preflightMock.fetchZtPreflight.mockReset().mockResolvedValue(PREFLIGHT);
+    apiMock.listZtReports.mockReset().mockResolvedValue(REPORTS);
+    apiMock.getZtSnapshot.mockReset().mockResolvedValue(SNAPSHOT);
+    apiMock.ztReportUrl.mockReset().mockImplementation(async (id: string) => ztReportPath(id));
+    authMock.withFreshTicket.mockReset().mockImplementation(async (url: string) => `${url}?ticket=fresh`);
+    window.vibeDesktop = {
+      isDesktop: true,
+      restartBackend: vi.fn(),
+      getCredentialStatus: vi.fn(),
+      setCredential: vi.fn(),
+    } as unknown as Window["vibeDesktop"];
+  });
+
+  afterEach(() => {
+    delete window.vibeDesktop;
+  });
+
+  it("opens a report in the system browser with a fresh ticket", async () => {
+    const open = vi.spyOn(window, "open").mockReturnValue(null);
+    expect(isDesktopShell()).toBe(true);
+    renderPage();
+    fireEvent.click(await screen.findByRole("button", { name: "Open Alpha Monitor Top 25" }));
+    // Inside the shell the frame relies on the injected header: no ticket needed.
+    expect(await screen.findByTitle("Report: Alpha Monitor Top 25")).toHaveAttribute(
+      "src",
+      "/zt/reports/ALPHA_MONITOR_TOP25.html",
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Open in browser" }));
+    await waitFor(() => expect(open).toHaveBeenCalledTimes(1));
+    expect(authMock.withFreshTicket).toHaveBeenCalledWith("/zt/reports/ALPHA_MONITOR_TOP25.html");
+    expect(open).toHaveBeenCalledWith(
+      `${window.location.origin}/zt/reports/ALPHA_MONITOR_TOP25.html?ticket=fresh`,
+      "_blank",
+      "noopener,noreferrer",
+    );
   });
 });
 

@@ -55,7 +55,7 @@ export default defineConfig(({ mode }) => {
         "/options": apiProxyWithHtmlFallback,
         "^/alpha(?:/|$)": apiProxy,
         // ZT add-on: /zt is an SPA page; only its API sub-paths proxy.
-        "^/zt/(?:reports|snapshot)(?:/|$)": apiProxy,
+        "^/zt/(?:reports|snapshot|preflight)(?:/|$)": apiProxy,
       },
     },
     build: {

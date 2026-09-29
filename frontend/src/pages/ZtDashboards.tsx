@@ -6,6 +6,7 @@ import { useTranslation } from "react-i18next";
 import { useSearchParams } from "react-router";
 import {
   AlertTriangle,
+  ClipboardCheck,
   ExternalLink,
   FileText,
   LayoutDashboard,
@@ -14,7 +15,16 @@ import {
   ShieldCheck,
   X,
 } from "lucide-react";
-import { api, ApiError, isAuthRequiredError } from "@/lib/api";
+import { api, ApiError, isAuthRequiredError, ztReportPath } from "@/lib/api";
+import { withFreshTicket } from "@/lib/apiAuth";
+import {
+  fetchZtPreflight,
+  formatDetailValue,
+  problemsFirst,
+  type ZtCheckStatus,
+  type ZtPreflight,
+  type ZtPreflightCheck,
+} from "@/lib/ztPreflight";
 import type {
   ZtEnvelope,
   ZtReportItem,
@@ -42,6 +52,11 @@ export function parseReportLinkMessage(data: unknown): { id: string; href: strin
     id: typeof message.id === "string" ? message.id : "",
     href: typeof message.href === "string" ? message.href : "",
   };
+}
+
+/** True inside the Vibe-Trading desktop shell (Electron preload bridge). */
+export function isDesktopShell(): boolean {
+  return typeof window !== "undefined" && Boolean(window.vibeDesktop?.isDesktop);
 }
 
 function useZt(): Translate {
@@ -79,6 +94,8 @@ export function ZtDashboards() {
   const [snapshotDate, setSnapshotDate] = useState("today");
   const [snapshot, setSnapshot] = useState<ZtEnvelope<ZtSnapshotData> | null>(null);
   const [snapshotError, setSnapshotError] = useState<LoadError | null>(null);
+  const [preflight, setPreflight] = useState<ZtPreflight | null>(null);
+  const [preflightError, setPreflightError] = useState<LoadError | null>(null);
   const [loading, setLoading] = useState(true);
   const [viewer, setViewer] = useState<ViewerState | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
@@ -110,11 +127,21 @@ export function ZtDashboards() {
     [tz],
   );
 
+  const loadPreflight = useCallback(async () => {
+    try {
+      setPreflight(await fetchZtPreflight());
+      setPreflightError(null);
+    } catch (error) {
+      setPreflight(null);
+      setPreflightError(classify(error, tz));
+    }
+  }, [tz]);
+
   const refresh = useCallback(async () => {
     setLoading(true);
-    await Promise.all([loadReports(), loadSnapshot(snapshotDate)]);
+    await Promise.all([loadPreflight(), loadReports(), loadSnapshot(snapshotDate)]);
     setLoading(false);
-  }, [loadReports, loadSnapshot, snapshotDate]);
+  }, [loadPreflight, loadReports, loadSnapshot, snapshotDate]);
 
   useEffect(() => {
     // Load once on mount; later loads are explicit (refresh or date change).
@@ -155,6 +182,17 @@ export function ZtDashboards() {
 
   const openInNewTab = useCallback(
     async (item: ZtReportItem) => {
+      if (isDesktopShell()) {
+        // The desktop shell refuses about:blank windows and hands http(s) URLs to
+        // the system browser, which has no key: always send a fresh ticket.
+        try {
+          const url = new URL(await withFreshTicket(ztReportPath(item.id)), window.location.href);
+          window.open(url.href, "_blank", "noopener,noreferrer");
+        } catch (error) {
+          setNotice(error instanceof Error ? error.message : String(error));
+        }
+        return;
+      }
       // Open synchronously (keeps the click's user activation), then navigate
       // once a fresh single-use ticket is minted.
       const win = window.open("about:blank", "_blank");
@@ -239,6 +277,8 @@ export function ZtDashboards() {
           </button>
         </section>
 
+        <PreflightPanel tz={tz} report={preflight} error={preflightError} loading={loading && !preflight} />
+
         {viewer ? (
           <section ref={viewerRef} aria-label={tz("viewer", "Report viewer")} className="space-y-3">
             <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
@@ -256,7 +296,7 @@ export function ZtDashboards() {
                   className="inline-flex items-center gap-1.5 rounded-md border px-3 py-1.5 text-xs font-medium transition hover:bg-muted"
                 >
                   <ExternalLink className="h-3.5 w-3.5" aria-hidden="true" />
-                  {tz("newTab", "Open in new tab")}
+                  {isDesktopShell() ? tz("openInBrowser", "Open in browser") : tz("newTab", "Open in new tab")}
                 </button>
                 <button
                   type="button"
@@ -313,6 +353,140 @@ export function ZtDashboards() {
         />
       </div>
     </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Pre-flight panel
+// ---------------------------------------------------------------------------
+
+function PreflightPanel({
+  tz,
+  report,
+  error,
+  loading,
+}: {
+  tz: Translate;
+  report: ZtPreflight | null;
+  error: LoadError | null;
+  loading: boolean;
+}) {
+  const [showOk, setShowOk] = useState(true);
+  const checks = useMemo(() => problemsFirst(report?.checks ?? []), [report]);
+  const visible = showOk ? checks : checks.filter((check) => check.status !== "OK");
+  return (
+    <section aria-labelledby="zt-preflight" data-testid="zt-preflight" className="space-y-3">
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+        <div className="min-w-0">
+          <h2 id="zt-preflight" className="flex items-center gap-2 text-lg font-semibold">
+            <ClipboardCheck className="h-4 w-4 shrink-0" aria-hidden="true" />
+            {tz("preflightTitle", "Pre-flight")}
+            {report ? <CheckPill status={report.overall} /> : null}
+          </h2>
+          <p className="text-sm text-muted-foreground">
+            {tz(
+              "preflightSubtitle",
+              "Is this server ready for a real test? LLM, PIT receipts and prices, scheduler, kill switch, order approval, MCP servers, playbooks, disk and version.",
+            )}
+          </p>
+        </div>
+        {report ? (
+          <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+            <span className="font-mono" data-testid="zt-preflight-counts">
+              {tz("preflightCounts", "{{ok}} OK · {{warn}} WARN · {{fail}} FAIL", {
+                ok: report.counts.OK ?? 0,
+                warn: report.counts.WARN ?? 0,
+                fail: report.counts.FAIL ?? 0,
+              })}
+            </span>
+            <span className="font-mono">{report.generated_at?.slice(0, 19).replace("T", " ")} UTC</span>
+            <button
+              type="button"
+              onClick={() => setShowOk((value) => !value)}
+              className="rounded-md border px-2 py-1 font-medium transition hover:bg-muted"
+            >
+              {showOk ? tz("hideOk", "Hide OK checks") : tz("showOk", "Show all checks")}
+            </button>
+          </div>
+        ) : null}
+      </div>
+
+      {error ? <ErrorPanel error={error} tz={tz} /> : null}
+      {!report && !error && loading ? (
+        <div className="flex h-16 items-center justify-center rounded-md border text-sm text-muted-foreground">
+          <Loader2 className="me-2 h-4 w-4 animate-spin" />
+          {tz("preflightLoading", "Running checks…")}
+        </div>
+      ) : null}
+
+      {report ? (
+        <ul className="grid gap-2 lg:grid-cols-2" aria-label={tz("preflightList", "Pre-flight checks")}>
+          {visible.map((check) => (
+            <PreflightRow key={check.id} check={check} tz={tz} />
+          ))}
+          {visible.length === 0 ? (
+            <li className="rounded-md border border-dashed p-3 text-sm text-muted-foreground">
+              {tz("allOk", "Every check is OK.")}
+            </li>
+          ) : null}
+        </ul>
+      ) : null}
+    </section>
+  );
+}
+
+function PreflightRow({ check, tz }: { check: ZtPreflightCheck; tz: Translate }) {
+  const details = Object.entries(check.detail ?? {});
+  return (
+    <li
+      data-testid="zt-preflight-check"
+      data-check-id={check.id}
+      data-status={check.status}
+      className={cn(
+        "min-w-0 space-y-1.5 rounded-md border p-3 text-sm",
+        check.status === "FAIL" && "border-danger/40 bg-danger/5",
+        check.status === "WARN" && "border-warning/40 bg-warning/5",
+      )}
+    >
+      <div className="flex min-w-0 flex-wrap items-center gap-2">
+        <CheckPill status={check.status} />
+        <span className="font-medium">{check.label}</span>
+      </div>
+      <p className="break-words text-muted-foreground">{check.summary}</p>
+      {check.fix && check.status !== "OK" ? (
+        <p className="break-words text-xs">
+          <span className="font-medium">{tz("howToFix", "How to fix:")}</span> {check.fix}
+        </p>
+      ) : null}
+      {details.length ? (
+        <details className="text-xs">
+          <summary className="cursor-pointer text-muted-foreground">{tz("details", "Details")}</summary>
+          <dl className="mt-1 grid grid-cols-1 gap-x-3 gap-y-0.5 sm:grid-cols-[auto_1fr]">
+            {details.map(([key, value]) => (
+              <div key={key} className="contents">
+                <dt className="font-mono text-muted-foreground">{key}</dt>
+                <dd className="break-all font-mono">{formatDetailValue(value)}</dd>
+              </div>
+            ))}
+          </dl>
+        </details>
+      ) : null}
+    </li>
+  );
+}
+
+function CheckPill({ status }: { status: ZtCheckStatus }) {
+  return (
+    <span
+      className={cn(
+        "inline-flex shrink-0 rounded px-2 py-0.5 font-mono text-xs font-medium",
+        status === "OK" && "bg-success/10 text-success",
+        status === "WARN" && "bg-warning/10 text-warning",
+        status === "FAIL" && "bg-danger/10 text-danger",
+      )}
+    >
+      {status}
+    </span>
   );
 }
 
