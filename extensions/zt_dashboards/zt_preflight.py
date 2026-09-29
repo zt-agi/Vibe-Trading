@@ -1003,6 +1003,55 @@ def check_version(ctx: Context) -> Check:
                  "Run bin\\sync_src.ps1 (it records the synced commit).", detail)
 
 
+BLAS_THREAD_VARS = ("OPENBLAS_NUM_THREADS", "OMP_NUM_THREADS", "MKL_NUM_THREADS")
+BLAS_MAX_THREADS = 8
+BLAS_MB_PER_THREAD = 60   # OpenBLAS commit per thread at import, measured on PC1 2026-09-29
+
+
+def _blas_threads(env: Mapping[str, Any]) -> int | None:
+    for name in BLAS_THREAD_VARS:
+        try:
+            value = int(str(env.get(name) or "").strip())
+        except ValueError:
+            continue
+        if value > 0:
+            return value
+    return None
+
+
+def check_blas_threads(ctx: Context) -> Check:
+    """numpy/scipy's OpenBLAS reserves commit per thread in every process that imports them."""
+    cpus = os.cpu_count() or 1
+    server = _blas_threads(ctx.environ)
+    detail: dict[str, Any] = {"cpu_count": cpus, "server_threads": server,
+                              "variables": {name: ctx.environ.get(name) for name in BLAS_THREAD_VARS}}
+    uncapped: list[str] = []
+    path = _agent_config_path(ctx.runtime_root)
+    try:
+        raw = json.loads(path.read_text(encoding="utf-8-sig")) if path and path.suffix == ".json" else {}
+        servers = (raw.get("mcpServers") or raw.get("mcp_servers") or {}) if isinstance(raw, dict) else {}
+        for name, spec in servers.items():
+            env = dict(ctx.environ)
+            env.update((spec or {}).get("env") or {})
+            if str((spec or {}).get("command") or "") and (_blas_threads(env) or cpus) > BLAS_MAX_THREADS:
+                uncapped.append(name)
+    except Exception as exc:  # the MCP check reports parse errors
+        detail["agent_json_error"] = f"{type(exc).__name__}: {str(exc)[:120]}"
+    detail["mcp_servers_uncapped"] = uncapped
+    effective = server or cpus
+    if cpus > BLAS_MAX_THREADS and (effective > BLAS_MAX_THREADS or uncapped):
+        extra = (effective - 1) * BLAS_MB_PER_THREAD
+        who = "this server" + (f" and {len(uncapped)} MCP server(s)" if uncapped else "")
+        return Check("runtime.blas_threads", "Process memory (BLAS threads)", WARN,
+                     f"{cpus} CPU threads and no BLAS thread cap for {who}: each process that imports "
+                     f"numpy/scipy reserves about {extra:,} MB more commit than it needs.",
+                     "Set OPENBLAS_NUM_THREADS=4, OMP_NUM_THREADS=4 and MKL_NUM_THREADS=4 for VT "
+                     "(bin\\vt_env.ps1 does) and 2 in each agent.json server env, then restart VT. "
+                     "Without the cap, many MCP processes can exhaust the Windows commit limit.", detail)
+    return Check("runtime.blas_threads", "Process memory (BLAS threads)", OK,
+                 f"BLAS threads capped at {effective} ({cpus} CPU threads).", "", detail)
+
+
 def check_extension_routes(ctx: Context) -> Check:
     results = getattr(ctx.app_state, "vt_extension_routes", None) if ctx.app_state is not None else None
     if results is None:
@@ -1036,6 +1085,7 @@ CHECKS: tuple[Callable[[Context], Check], ...] = (
     check_playbooks,
     check_disk,
     check_version,
+    check_blas_threads,
     check_extension_routes,
 )
 

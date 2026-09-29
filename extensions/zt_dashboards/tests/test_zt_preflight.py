@@ -470,8 +470,40 @@ def test_preflight_route_requires_auth_and_never_returns_the_key(monkeypatch, pr
         assert ids == ["llm.provider", "llm.ollama", "llm.openai_codex", "pit.audit_receipt",
                        "pit.index_receipt", "pit.price_lake", "scheduler", "live.halt",
                        "orders.approval", "mcp.servers", "playbooks", "disk.runtime", "vt.version",
-                       "routes.extensions"]
+                       "runtime.blas_threads", "routes.extensions"]
         assert KEY not in response.text
         assert all(c["status"] in {"OK", "WARN", "FAIL"} for c in body["checks"])
     finally:
         reset_env_config()
+
+
+# --- BLAS threads ------------------------------------------------------------------------
+
+
+def _blas_ctx(preflight, tmp_path, environ, servers):
+    home = tmp_path / "home"
+    home.mkdir(parents=True, exist_ok=True)
+    (home / "agent.json").write_text(json.dumps({"mcpServers": servers}), encoding="utf-8")
+    env = {"VIBE_TRADING_HOME": str(home), **environ}
+    return preflight.build_context(environ=env)
+
+
+def test_blas_threads_warn_without_a_cap_on_a_many_core_machine(monkeypatch, tmp_path):
+    preflight = load_extension_module("zt_dashboards_preflight", "zt_preflight.py")
+    monkeypatch.setattr(preflight.os, "cpu_count", lambda: 20)
+    servers = {"zt-events": {"command": "python", "args": ["server.py"], "env": {}}}
+    check = preflight.check_blas_threads(_blas_ctx(preflight, tmp_path, {}, servers))
+    assert check.status == preflight.WARN and "1,140 MB" in check.summary
+    assert check.detail["mcp_servers_uncapped"] == ["zt-events"]
+    capped = {"zt-events": {"command": "python", "args": ["server.py"],
+                            "env": {"OPENBLAS_NUM_THREADS": "2"}}}
+    check = preflight.check_blas_threads(_blas_ctx(preflight, tmp_path, {"OPENBLAS_NUM_THREADS": "4"}, capped))
+    assert check.status == preflight.OK and "capped at 4" in check.summary
+
+
+def test_blas_threads_ok_on_a_small_machine(monkeypatch, tmp_path):
+    preflight = load_extension_module("zt_dashboards_preflight", "zt_preflight.py")
+    monkeypatch.setattr(preflight.os, "cpu_count", lambda: 4)
+    servers = {"zt-events": {"command": "python", "args": ["server.py"], "env": {}}}
+    check = preflight.check_blas_threads(_blas_ctx(preflight, tmp_path, {}, servers))
+    assert check.status == preflight.OK
