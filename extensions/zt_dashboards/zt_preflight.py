@@ -83,6 +83,7 @@ class Context:
     app_state: Any = None
     http_get: Callable[[str, float], Any] | None = None
     windows: bool = os.name == "nt"
+    server_port: int | None = None
 
 
 # ---------------------------------------------------------------------------
@@ -190,14 +191,15 @@ def _vt_settings(environ: Mapping[str, str]) -> dict[str, Any]:
 
 
 def build_context(*, now: datetime | None = None, app_state: Any = None,
-                  environ: Mapping[str, str] | None = None) -> Context:
+                  environ: Mapping[str, str] | None = None,
+                  server_port: int | None = None) -> Context:
     env = os.environ if environ is None else environ
     runtime = _runtime_root(env)
     dotenv, dotenv_path = _read_dotenv(runtime)
     return Context(now=now or _utc_now(), environ=env, runtime_root=runtime,
                    project_root=_project_root(env), vt_root=REPO_ROOT.parent,
                    settings=_vt_settings(env), dotenv=dotenv, dotenv_path=dotenv_path,
-                   app_state=app_state)
+                   app_state=app_state, server_port=server_port)
 
 
 def _normalize_provider(value: str) -> str:
@@ -693,6 +695,21 @@ def check_price_lake(ctx: Context) -> Check:
 # ---------------------------------------------------------------------------
 
 
+WEB_PORT = 8899
+
+
+def _web_server_also_running(ctx: Context) -> bool:
+    """True when this is not the 8899 web server and a VT server answers on 8899."""
+    if not ctx.server_port or ctx.server_port == WEB_PORT:
+        return False
+    try:
+        payload = (ctx.http_get or _default_http_get)(f"http://127.0.0.1:{WEB_PORT}/health",
+                                                      OLLAMA_TIMEOUT_S)
+    except (OSError, ValueError, urllib.error.URLError):
+        return False
+    return isinstance(payload, dict) and "status" in payload
+
+
 def check_scheduler(ctx: Context) -> Check:
     enabled = bool(ctx.settings.get("scheduler_enabled"))
     path = ctx.runtime_root / "scheduled_research" / "scheduled_research_jobs.json"
@@ -721,6 +738,14 @@ def check_scheduler(ctx: Context) -> Check:
             return Check("scheduler", "Scheduler", WARN,
                          f"Off: {len(active)} active job(s) will not fire.", note or enable, detail)
         return Check("scheduler", "Scheduler", OK, "Off; no active scheduled jobs.", enable, detail)
+    if _web_server_also_running(ctx):
+        # VT's scheduler has no cross-process lock: two servers on one home both fire every job.
+        detail["also_running"] = f"127.0.0.1:{WEB_PORT}"
+        return Check("scheduler", "Scheduler", WARN,
+                     f"On here and in the web server on {WEB_PORT}, which shares this runtime: "
+                     "every scheduled job would fire twice.",
+                     "Run one of the two: close the desktop app, or stop the web server with "
+                     "bin\\stop_vt_ui.ps1.", detail)
     if failing:
         return Check("scheduler", "Scheduler", WARN,
                      f"On, {len(active)} active job(s); {len(failing)} failing.",
@@ -999,8 +1024,8 @@ CHECKS: tuple[Callable[[Context], Check], ...] = (
 
 
 def run_preflight(ctx: Context | None = None, *, app_state: Any = None,
-                  now: datetime | None = None) -> dict[str, Any]:
-    ctx = ctx or build_context(now=now, app_state=app_state)
+                  now: datetime | None = None, server_port: int | None = None) -> dict[str, Any]:
+    ctx = ctx or build_context(now=now, app_state=app_state, server_port=server_port)
     results = []
     for check in CHECKS:
         try:

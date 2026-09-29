@@ -286,6 +286,27 @@ def test_scheduler(pf, ctx):
     assert pf.check_scheduler(ctx).status == "WARN"
 
 
+def test_scheduler_warns_when_the_web_server_shares_the_runtime(pf, ctx):
+    ctx.settings["scheduler_enabled"] = True
+    calls = []
+
+    def web_up(url, timeout):
+        calls.append(url)
+        return {"status": "ok"}
+
+    ctx.http_get, ctx.server_port = web_up, 53117          # the desktop's private backend
+    twice = pf.check_scheduler(ctx)
+    assert twice.status == "WARN" and "fire twice" in twice.summary
+    assert calls == ["http://127.0.0.1:8899/health"]
+    ctx.server_port = 8899                                 # the web server itself
+    assert pf.check_scheduler(ctx).status == "OK"
+    ctx.server_port, ctx.http_get = 53117, fake_ollama(fail=True)
+    assert pf.check_scheduler(ctx).status == "OK"          # nothing on 8899
+    ctx.settings["scheduler_enabled"] = False
+    ctx.http_get = web_up
+    assert pf.check_scheduler(ctx).status == "OK"          # off: nothing fires anywhere twice
+
+
 def test_halt(pf, ctx):
     assert pf.check_halt(ctx).status == "OK"
     live = ctx.runtime_root / "live"

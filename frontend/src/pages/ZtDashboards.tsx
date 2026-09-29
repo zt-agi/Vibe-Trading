@@ -75,7 +75,7 @@ function classify(error: unknown, tz: Translate): LoadError {
         kind: "routes",
         message: tz(
           "routesMissing",
-          "The ZT routes are not registered on this Vibe-Trading server. Start it with extensions/zt_dashboards/launch_api.py (same flags as vibe-trading serve).",
+          "The ZT routes are not registered on this Vibe-Trading server. Web: start it with VT Web.cmd (extensions/zt_dashboards/launch_api.py, same flags as vibe-trading serve). Desktop: install vt-zt with bin\\install_vt_zt.ps1 and start VT Desktop.cmd.",
         ),
       };
     }

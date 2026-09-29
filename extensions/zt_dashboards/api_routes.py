@@ -97,7 +97,8 @@ def get_zt_snapshot(date: str) -> Any:
 
 def get_zt_preflight(request: Request) -> Any:
     """Operator pre-flight: OK / WARN / FAIL per check, with how to fix; no secrets."""
-    payload = preflight.run_preflight(app_state=getattr(request.app, "state", None))
+    payload = preflight.run_preflight(app_state=getattr(request.app, "state", None),
+                                      server_port=request.url.port)
     return JSONResponse(payload, headers={"Cache-Control": "no-store"})
 
 
