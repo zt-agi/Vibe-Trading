@@ -51,8 +51,10 @@ export default defineConfig({
     timezoneId: "America/New_York",
   },
   projects: [
-    { name: "w1366", use: { viewport: { width: 1366, height: 900 } } },
-    { name: "w390", use: { viewport: { width: 390, height: 844 } } },
+    { name: "w1366", grepInvert: /@desktop/, use: { viewport: { width: 1366, height: 900 } } },
+    { name: "w390", grepInvert: /@desktop/, use: { viewport: { width: 390, height: 844 } } },
+    // The desktop shell's renderer: 1280x820 window, no stored key, Bearer header on every request.
+    { name: "desktop", grep: /@desktop/, use: { viewport: { width: 1280, height: 820 } } },
   ],
   webServer: external
     ? undefined

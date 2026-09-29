@@ -290,3 +290,58 @@ test.describe("/zt in depth", () => {
     await expectClean(page, seen, "/zt in depth");
   });
 });
+
+// The desktop shell (desktop/electron) loads the SPA from its private backend and
+// injects "Authorization: Bearer <per-launch key>" into every request to that origin
+// (webRequest.onBeforeSendHeaders), frames included; the page itself never holds a
+// key, and the preload bridge exposes window.vibeDesktop. Emulated here with an
+// extra header and an init script; the server side of the same path is covered by
+// desktop-backend-smoke.mjs, which drives the shell's own BackendManager.
+test.describe("desktop shell (emulated) @desktop", () => {
+  test.use({ extraHTTPHeaders: { Authorization: `Bearer ${KEY}` } });
+  test.beforeEach(async ({ page }) => {
+    await page.addInitScript(() => {
+      (window as unknown as { vibeDesktop: unknown }).vibeDesktop = {
+        isDesktop: true,
+        restartBackend: async () => true,
+        getCredentialStatus: async () => ({ available: true, configured: [], migrated: [] }),
+        setCredential: async () => ({ available: true, configured: [], migrated: [] }),
+      };
+    });
+  });
+
+  test("/zt: pre-flight, report frame through the header, Open in browser with a fresh ticket", async ({ page, context }, info) => {
+    const seen = watch(page);
+    await page.goto("/zt");
+    await settle(page);
+    expect(await page.evaluate((storageKey) => localStorage.getItem(storageKey), STORAGE_KEY)).toBeNull();
+    await expect(page.getByTestId("zt-preflight").getByTestId("zt-preflight-counts")).toBeVisible();
+    const open = page.getByRole("button", { name: /^Open / }).and(page.locator(":enabled"));
+    const title = ((await open.first().getAttribute("aria-label")) ?? "").replace(/^Open /, "");
+    await open.first().click();
+    const frame = page.getByTitle(`Report: ${title}`);
+    await expect(frame).toBeVisible();
+    // No stored key: the frame URL carries no ticket and loads through the injected header.
+    expect(await frame.getAttribute("src")).not.toContain("ticket=");
+    const body = page.frameLocator(`iframe[title="Report: ${title}"]`).locator("body");
+    expect((await body.innerText()).trim().length).toBeGreaterThan(20);
+    const popup = context.waitForEvent("page");
+    await page.getByRole("button", { name: "Open in browser" }).click();
+    const opened = await popup;
+    expect(opened.url()).toMatch(/\/zt\/reports\/.+\?ticket=/);
+    expect(opened.url()).not.toContain(KEY);
+    await opened.close();
+    await screenshot(page, info, "desktop-zt");
+    await expectClean(page, seen, "desktop /zt", info);
+  });
+
+  for (const route of ROUTES) {
+    test(`${route.path} renders cleanly with the injected header`, async ({ page }, info) => {
+      const seen = watch(page);
+      await page.goto(route.path);
+      await settle(page);
+      await screenshot(page, info, route.name);
+      await expectClean(page, seen, route.path, info);
+    });
+  }
+});
