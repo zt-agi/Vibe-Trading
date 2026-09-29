@@ -62,6 +62,17 @@ def test_propose_list_get_through_an_mcp_client(server, core, engine):
     assert not engine.account_path().exists()  # proposing filled nothing
 
 
+def test_approved_proposals_do_not_reveal_the_hash_either(server, core):
+    import json
+
+    proposal = core.create_proposal(broker="zt-paper", orders=[{"symbol": "SPY", "side": "buy", "qty": 1}],
+                                    rationale="r", evidence_ids=["e"], origin={"kind": "test"})
+    core.approve_proposal(proposal["id"], confirm_hash=proposal["content_hash"])
+    bare = proposal["content_hash"].removeprefix("sha256:")
+    for payload in (server.get_order_proposal(proposal["id"]), server.list_order_proposals(), server.paper_account()):
+        assert bare not in json.dumps(payload)
+
+
 def test_bad_proposals_are_tool_errors(server):
     from fastmcp import Client
     from fastmcp.exceptions import ToolError
