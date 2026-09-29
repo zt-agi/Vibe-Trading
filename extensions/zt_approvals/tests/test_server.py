@@ -1,6 +1,9 @@
 """The stdio MCP server: the agent can propose and read, never approve."""
+import ast
 import asyncio
+import json
 import os
+import subprocess
 import sys
 
 import pytest
@@ -109,3 +112,68 @@ def test_stdio_entrypoint_as_vibe_trading_runs_it(home):
     names, listed = asyncio.run(run())
     assert names == EXPECTED
     assert listed["proposals"] == [] and listed["approval_mode"] == "off"
+
+
+def test_propose_over_stdio_answers(home):
+    """The stdio server answers propose_orders, the call that loads pandas and numpy.
+
+    On Windows that call hung for good when numpy was first loaded inside FastMCP's
+    worker thread while the stdio reader thread was blocked on stdin (PC1,
+    2026-09-29). With the pitdb price source and no project root the reference
+    price fails closed, so no network is needed and the proposal is recorded with
+    a failed price check.
+    """
+    from fastmcp import Client
+    from fastmcp.client.transports import StdioTransport
+
+    env = {key: value for key, value in os.environ.items()
+           if key in ("PATH", "SYSTEMROOT", "TEMP", "TMP", "HOME", "USERPROFILE", "LANG",
+                      "OPENBLAS_NUM_THREADS", "OMP_NUM_THREADS", "MKL_NUM_THREADS")}
+    env.update(VIBE_TRADING_HOME=str(home), PYTHONDONTWRITEBYTECODE="1", ZT_PAPER_PRICE_SOURCE="pitdb",
+               PITDB_INDEX=str(home / "no-such-index.duckdb"))
+    transport = StdioTransport(command=sys.executable, args=[str(EXTENSION / "server.py")], env=env,
+                               cwd=str(home))
+
+    async def run():
+        async with Client(transport) as client:
+            return _payload(await asyncio.wait_for(client.call_tool("propose_orders", {
+                "rationale": "stdio round trip", "evidence_ids": ["ev-stdio"],
+                "orders": [{"symbol": "SPY", "side": "buy", "qty": 1, "order_type": "market", "tif": "day"}]}),
+                timeout=120))
+
+    proposed = asyncio.run(run())
+    assert proposed["proposal_status"] == "PENDING"
+    assert proposed["validation_ok"] is False and "reference_prices" in proposed["failed_checks"]
+
+
+def test_stdio_entry_point_loads_the_price_stack_before_serving():
+    """Run as a script (how agent.json launches it), the server loads the price stack
+    first and only then starts reading stdin."""
+    tree = ast.parse((EXTENSION / "server.py").read_text(encoding="utf-8"))
+    main = next(node for node in tree.body
+                if isinstance(node, ast.If) and "__main__" in ast.unparse(node.test))
+    first = main.body[0]
+    assert isinstance(first, ast.Expr) and ast.unparse(first.value) == "load_price_stack()"
+    runs = [node for node in ast.walk(main)
+            if isinstance(node, ast.Call) and ast.unparse(node.func) == "mcp.run"]
+    assert runs and all(node.lineno > first.lineno for node in runs)
+
+
+def test_load_price_stack_loads_numpy_pandas_and_the_loaders_without_stdout(home):
+    """In a fresh interpreter: numpy, pandas and every VT loader are imported, and nothing
+    reaches stdout (the protocol channel)."""
+    code = ("import json, runpy, sys\n"
+            "ns = runpy.run_path(sys.argv[1], run_name='zt_approvals_probe')\n"
+            "ns['load_price_stack']()\n"
+            "from backtest.loaders import registry\n"
+            "after = {m: m in sys.modules for m in ('numpy', 'pandas')}\n"
+            "sys.stderr.write('\\n' + json.dumps({'after': after,"
+            " 'registered': registry._registered, 'loaders': len(registry.LOADER_REGISTRY)}))\n")
+    env = {**os.environ, "VIBE_TRADING_HOME": str(home), "PYTHONDONTWRITEBYTECODE": "1"}
+    done = subprocess.run([sys.executable, "-c", code, str(EXTENSION / "server.py")], env=env,
+                          capture_output=True, text=True, timeout=300, cwd=str(home))
+    assert done.returncode == 0, done.stderr[-2000:]
+    assert done.stdout == ""
+    report = json.loads(done.stderr.strip().splitlines()[-1])
+    assert report["after"] == {"numpy": True, "pandas": True}
+    assert report["registered"] is True and report["loaders"] > 0

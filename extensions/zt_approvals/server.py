@@ -16,6 +16,7 @@ Tools:
 """
 from __future__ import annotations
 
+import contextlib
 import inspect
 import sys
 from pathlib import Path
@@ -118,7 +119,28 @@ for _tool in TOOLS[1:]:
     mcp.tool(_tool, annotations=READ_ONLY)
 
 
+def load_price_stack() -> None:
+    """Load the numeric stack and VT's price loaders on the calling (main) thread.
+
+    propose_orders reads the reference close through VT's loader chain
+    (``order_proposals.vt_loader_close``), which imports pandas, numpy and every
+    loader module. On Windows, loading numpy's OpenBLAS DLL for the first time
+    inside FastMCP's worker thread deadlocks while the stdio reader thread is
+    blocked on stdin (PC1, 2026-09-29: the first propose_orders never returned),
+    so the stdio server loads them before it starts reading, as zt_events,
+    zt_ontology and zt_research do. stdout carries the protocol, so anything a
+    loader prints while importing goes to stderr.
+    """
+    with contextlib.redirect_stdout(sys.stderr):
+        import numpy  # noqa: F401
+        import pandas  # noqa: F401
+        from backtest.loaders.registry import _ensure_registered
+
+        _ensure_registered()
+
+
 if __name__ == "__main__":
+    load_price_stack()
     # stdout carries the protocol; skip the startup banner where supported.
     if "show_banner" in inspect.signature(mcp.run).parameters:
         mcp.run(show_banner=False)
