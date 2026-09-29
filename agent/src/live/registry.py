@@ -234,5 +234,9 @@ def wrap_live_broker_tools(
             )
         else:
             # WRITE or UNKNOWN -> mandate-gated (fail-closed for UNKNOWN).
-            result.append(LiveOrderGuardTool(tool._adapter, spec, broker=broker))
+            # ZT add-on: under VIBE_ORDER_APPROVAL=required the description tells
+            # the model the call records a proposal a human approves.
+            from src.live.order_proposals import annotate_order_tool
+
+            result.append(annotate_order_tool(LiveOrderGuardTool(tool._adapter, spec, broker=broker)))
     return result

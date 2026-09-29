@@ -130,6 +130,21 @@ def flatten_and_cancel(
         )
         return report
 
+    # ZT add-on: a human approves every order. Under VIBE_ORDER_APPROVAL=required
+    # the closing orders become one PENDING proposal instead of being submitted
+    # (cancels above still run: they place nothing).
+    from src.live.order_proposals import approval_required, hold_flatten
+
+    if approval_required():
+        positions = _read_broker_state("read_positions", "positions", read_positions, report)
+        if positions is not None:
+            try:
+                report["flatten_skipped_reason"] = hold_flatten(broker, positions)
+            except Exception as exc:  # noqa: BLE001 - nothing is submitted either way
+                report["errors"].append({"phase": "flatten_hold", "error": str(exc)})
+                report["flatten_skipped_reason"] = "order approval required; the closing orders could not be recorded"
+        return report
+
     _flatten_open_positions(broker, submit, read_positions, report)
     return report
 

@@ -704,6 +704,19 @@ def place_order(
     gate and IBKR stays read-only.
     """
     profile = profile_by_id(profile_id)
+    # ZT add-on: a human approves every order. With VIBE_ORDER_APPROVAL=required
+    # (and always for the zt-paper simulated broker) the order is recorded as a
+    # PENDING proposal and nothing reaches the broker; the approval route replays
+    # exactly this call once (src/live/order_proposals.py).
+    from src.live.order_proposals import intercept_place_order
+
+    held = intercept_place_order(
+        profile, symbol=symbol, side=side, quantity=quantity, notional=notional,
+        order_type=order_type, limit_price=limit_price, time_in_force=time_in_force,
+        session_id=session_id, overrides=overrides,
+    )
+    if held is not None:
+        return _with_profile(profile, held)
     if profile.transport != "broker_sdk":
         return _unsupported(profile, "orders.place")
     if profile.readonly:
@@ -797,6 +810,13 @@ def _route_sdk_write(
         return _unsupported(profile, unsupported_capability)
     if profile.readonly:
         return _unsupported(profile, unsupported_capability)
+    # ZT add-on: under VIBE_ORDER_APPROVAL=required a position action is held as a
+    # PENDING proposal too (src/live/order_proposals.py).
+    from src.live.order_proposals import intercept_sdk_write
+
+    held = intercept_sdk_write(profile, remote_tool=remote_tool, audit_request=audit_request, overrides=overrides)
+    if held is not None:
+        return _with_profile(profile, held)
     module = _sdk_module(profile.connector)
     config = _sdk_config(profile, module, overrides)
     if profile.environment == "paper":

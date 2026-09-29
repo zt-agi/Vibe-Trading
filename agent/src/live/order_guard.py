@@ -386,6 +386,16 @@ class LiveOrderGuardTool(MCPRemoteTool):
         under :data:`LIVE_ACTION_RESULT_KEY` so the api_server SSE relay can emit
         a ``live.action`` event without touching the agent loop (H5).
         """
+        # ZT add-on: with VIBE_ORDER_APPROVAL=required an order that passed the
+        # gate is held as a PENDING proposal instead of being forwarded; the
+        # approval route replays this call once (src/live/order_proposals.py).
+        from src.live.order_proposals import hold_guard_order
+
+        held = hold_guard_order(
+            self, kwargs=kwargs, intent=intent, mandate=mandate, positions=positions, balance=balance,
+        )
+        if held is not None:
+            return held
         advisory = self._advisory_review(intent, positions, balance, mandate)
         forwarded = super().execute(**kwargs)
         broker_response = self._safe_json(forwarded)
