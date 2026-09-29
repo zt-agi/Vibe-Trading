@@ -1231,9 +1231,17 @@ class BaseEngine(ABC):
 
             if self.position_adjustment == "rebalance":
                 if execute_targets and not stop_run:
-                    self._execute_target_rebalance(
-                        target_weights, data_map, ts, equity, codes
-                    )
+                    try:
+                        self._execute_target_rebalance(
+                            target_weights, data_map, ts, equity, codes
+                        )
+                    except ValueError as exc:
+                        # ZT add-on: say which bar (and the symbol being
+                        # handled) stopped the run; the planning checks raise
+                        # before any order of the bar commits.
+                        raise ValueError(
+                            f"rebalance at {ts} failed (symbol {self._active_symbol}): {exc}"
+                        ) from exc
                     self.rebalance_bars_executed += 1
                 target_weights = {}
             else:
