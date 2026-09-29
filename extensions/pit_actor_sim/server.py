@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import hashlib
+import importlib.util
 import json
 import os
 import re
@@ -21,6 +22,12 @@ try:
     import fork_rules
 except ImportError:  # imported as a package module rather than run as a script
     from . import fork_rules
+try:  # ZT add-on (2026-09-29): blind packets, contamination probe, role templates
+    import blinding
+    import contamination
+    import role_templates
+except ImportError:  # imported as a package module rather than run as a script
+    from . import blinding, contamination, role_templates
 
 # Operator storage rule (ZT 2026-09-28: everything on E:). On Windows the
 # runtime state and the disposable PIT index must live on E:; C:, D: and the
@@ -235,6 +242,54 @@ def pit_series_history(series_id: str, asof: str, start_date: str,
             "authority": "RESEARCH_ONLY_UNTIL_PIT_AUDIT_AND_BACKTEST_GATES_PASS"}
 
 
+# ZT add-on (2026-09-29): the warehouse's security dimension, read only to seal
+# names and sectors out of blind packets (never shown to a role fork). An
+# approved query of query_worker.py.
+UNIVERSE_SQL = """
+        SELECT sec_id, primary_ticker AS ticker, name, sector, country, asset_class
+        FROM dim_security ORDER BY sec_id
+    """
+
+
+def security_universe() -> list[dict]:
+    """Every security of the warehouse (identity metadata, no PIT facts)."""
+    return query(UNIVERSE_SQL, [])
+
+
+# ZT add-on (2026-09-29): an issuer's annual (fiscal-period FY) SEC XBRL facts
+# through obs_asof, for extensions/zt_style and derived packet evidence. An
+# approved query of query_worker.py.
+ISSUER_FACTS_SQL = """
+        SELECT o.series_id, o.event_time, o.value_num, o.quality, o.knowledge_time,
+               o.revision_seq, o.source_id, d.unit,
+               COALESCE(d.pit_class, ds.pit_class) AS pit_class
+        FROM obs_asof(?) o JOIN dim_series d USING (series_id)
+        LEFT JOIN dim_source ds ON o.source_id = ds.source_id
+        WHERE starts_with(o.series_id, ?) AND ends_with(o.series_id, ':FY')
+        ORDER BY o.series_id, o.event_time
+        LIMIT 5000
+    """
+_ISSUER_TICKER_RE = re.compile(r"^[A-Z0-9][A-Z0-9.\-]{0,11}$")
+
+
+def issuer_annual_facts(ticker: str, asof: str) -> dict:
+    """Every ``SEC:<TICKER>:<Concept>:<Unit>:FY`` row known at the as-of (latest revision)."""
+    at = asof_utc(asof)
+    symbol = str(ticker or "").strip().upper()
+    if not _ISSUER_TICKER_RE.match(symbol):
+        raise ValueError("ticker must be 1-12 letters, digits, '.' or '-'")
+    rows = query(ISSUER_FACTS_SQL, [at, f"SEC:{symbol}:"])
+    for row in rows:
+        known = datetime.fromisoformat(str(row["knowledge_time"]).replace("Z", "+00:00"))
+        if known.tzinfo is not None:
+            known = known.astimezone(timezone.utc).replace(tzinfo=None)
+        if known > at:
+            raise RuntimeError("PIT macro returned an issuer fact with knowledge_time after the as-of")
+    return {"asof": asof, "ticker": symbol, "rows": rows, "row_count": len(rows),
+            "truncated": len(rows) >= 5000,
+            "contains_non_pit": any(r.get("pit_class") in (None, "NON_PIT") for r in rows)}
+
+
 def sim_input(relative: str) -> Path:
     # ZT add-on: "actor_packets/<sha256>/..." names a frozen packet's file in
     # the E: runtime; everything else stays under the canonical market_actor_sim.
@@ -300,6 +355,19 @@ PACKET_LIMITS = (
     "No agent may estimate or mention a terminal-outcome probability; outcome "
     "distributions come only from run_market_actor_sim.",
 )
+
+# ZT add-on (2026-09-29): blind packets. A blind packet's fork-visible
+# rendering (blinding.py) and its sealed mapping are written once beside
+# packet.json; role forks and the simulator receive only the rendering, the
+# unblinded packet and the mapping go only to unseal_evidence_packet.
+BLIND_VIEW_FILE = "blind_view.json"
+SEALED_MAPPING_FILE = "sealed_mapping.json"
+BLIND_DIGEST_FILE = "blind_digest.json"
+PROBES_DIRNAME = "probes"
+_PROBE_LABEL_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_\-]{0,63}$")
+BLIND_LIMIT = ("Blind packet: identities, dates and absolute scale are sealed; a contamination probe "
+               "measures whether the rendering was recognised, and a recognised run never counts "
+               "toward skill.")
 
 
 def canonical_json(value) -> bytes:
@@ -416,12 +484,100 @@ def _admit_rows(rows: list[dict], at: datetime, label: str, excluded: list[dict]
     return admitted
 
 
+def packet_is_blind(packet: dict) -> bool:
+    return bool((packet.get("blind") or {}).get("blind"))
+
+
+_STYLE_RULES = None
+STYLE_RULES_PATH = Path(__file__).resolve().parent.parent / "zt_style" / "style_rules.py"
+STYLE_LIMIT = ("derived_style_scores are mechanical rule outcomes (zt_style) over the issuer's filings and "
+               "closes known at the packet as-of: descriptors of the filed numbers, not forecasts.")
+
+
+def style_rules_module():
+    """extensions/zt_style/style_rules.py, loaded by path (pure rules, no I/O)."""
+    global _STYLE_RULES
+    if _STYLE_RULES is None:
+        spec = importlib.util.spec_from_file_location("pit_actor_sim_style_rules", STYLE_RULES_PATH)
+        module = importlib.util.module_from_spec(spec)
+        sys.modules["pit_actor_sim_style_rules"] = module
+        spec.loader.exec_module(module)
+        _STYLE_RULES = module
+    return _STYLE_RULES
+
+
+def derived_style_rows(tickers: list[str], run_asof: str, at: datetime, excluded: list[dict]) -> list[dict]:
+    """Investor-style rule outcomes for each issuer, as Z evidence rows."""
+    style = style_rules_module()
+    rows: list[dict] = []
+    for ticker in tickers:
+        result = style.score_issuer(ticker, run_asof, asof_utc=asof_utc, pit_security=pit_security,
+                                    pit_price_history=pit_price_history, issuer_annual_facts=issuer_annual_facts)
+        for row in style.packet_rows(result):
+            if row["pit_class"] is not None and row["pit_class"] not in ADMITTED_PIT_CLASSES:
+                excluded.append({"item": f"style {ticker} {row['family']}.{row['component']}",
+                                 "reason": f"an input has pit_class {row['pit_class']!r}; not admitted"})
+                continue
+            known = row.get("knowledge_time")
+            if known and datetime.fromisoformat(str(known).replace("Z", "+00:00")).replace(tzinfo=None) > at:
+                raise RuntimeError("style rule used an input known after the as-of")
+            rows.append(row)
+    return [{"evidence_id": f"Z{index}", **row} for index, row in enumerate(rows, start=1)]
+
+
+def sealed_securities(tickers: list[str], run_asof: str, universe: list[dict]) -> list[dict]:
+    """Identity of each packet security at the as-of (for the sealed mapping only)."""
+    by_id = {row.get("sec_id"): row for row in universe}
+    out = []
+    for ticker in tickers:
+        rows = pit_security(ticker, run_asof)["securities"]
+        ids = sorted({row["sec_id"] for row in rows})
+        info = {"ticker": ticker, "sec_id": ids[0] if len(ids) == 1 else None, "name": None,
+                "sector": None, "country": None}
+        if len(ids) == 1:
+            profile = by_id.get(ids[0]) or {}
+            info.update(name=rows[0].get("name") or profile.get("name"), sector=profile.get("sector"),
+                        country=profile.get("country"))
+        out.append(info)
+    return out
+
+
+def load_blind(packet_sha256: str) -> tuple[dict, dict]:
+    """A blind packet's rendering and sealed mapping, checked against their digest."""
+    folder = packet_dir(packet_sha256)
+    try:
+        digest = json.loads((folder / BLIND_DIGEST_FILE).read_text(encoding="utf-8"))
+        view_bytes = (folder / BLIND_VIEW_FILE).read_bytes()
+        sealed_bytes = (folder / SEALED_MAPPING_FILE).read_bytes()
+    except FileNotFoundError:
+        raise RuntimeError(f"blind packet {packet_sha256} lacks its rendering; freeze it again") from None
+    if (sha256_hex(view_bytes) != digest.get("blind_view_sha256")
+            or sha256_hex(sealed_bytes) != digest.get("sealed_mapping_sha256")):
+        raise RuntimeError(f"blind rendering of packet {packet_sha256} no longer matches its digest")
+    view, sealed = json.loads(view_bytes), json.loads(sealed_bytes)
+    if view.get("packet_sha256") != packet_sha256 or sealed.get("packet_sha256") != packet_sha256:
+        raise RuntimeError(f"blind rendering of packet {packet_sha256} belongs to another packet")
+    return view, sealed
+
+
+def packet_bindings(packet: dict, tree: fork_rules.ScenarioTree) -> dict:
+    """Role-template bindings, refusing a template changed after the freeze."""
+    frozen = {tid: meta["sha256"] for tid, meta in (packet["scenario"].get("role_templates") or {}).items()}
+    try:
+        return role_templates.bindings(tree, project(), frozen=frozen)
+    except role_templates.TemplateError as error:
+        raise ValueError(str(error)) from None
+
+
 @mcp.tool
 def freeze_evidence_packet(scenario_id: str, run_asof: str, series: list[dict],
                            prices: list[dict] | None = None,
                            memos: list[dict] | None = None,
                            excluded_or_missing: list[dict] | None = None,
-                           interpretation_limits: list[str] | None = None) -> dict:
+                           interpretation_limits: list[str] | None = None,
+                           blind: bool | str = False,
+                           blind_max_age_days: int = blinding.DEFAULT_MAX_AGE_DAYS,
+                           style_scores: bool = True) -> dict:
     """Freeze a content-addressed evidence packet for role forks.
 
     Args:
@@ -436,15 +592,29 @@ def freeze_evidence_packet(scenario_id: str, run_asof: str, series: list[dict],
             each citation must name a series_id or evidence id admitted here.
         excluded_or_missing: ``[{"item", "reason"}]`` gaps role forks must see.
         interpretation_limits: Extra limits; the fixed limits are always added.
+        blind: ``true``, ``false`` or ``auto`` (blind when run_asof is older
+            than blind_max_age_days). A blind packet's role forks, probe and
+            simulator see only a rendering without tickers, names, sectors,
+            dates or absolute scale; a sealed mapping unblinds it later.
+        blind_max_age_days: The ``auto`` threshold in days (default 7).
+        style_scores: For every issuer whose SEC fiscal-year facts the packet
+            admits, add investor-style rule outcomes (extensions/zt_style) as
+            ``derived_style_scores`` rows Z1... (default true).
 
     Returns:
-        The packet sha256, where it is stored, and what it admitted.
+        The packet sha256, where it is stored, what it admitted and whether
+        it is blind.
     """
     at = asof_utc(run_asof)
     run_asof_utc = at.strftime("%Y-%m-%dT%H:%M:%SZ")
+    blind_decision = blinding.resolve_blind(blind, at, max_age_days=blind_max_age_days)
     scenario_rel, scenario_path = scenario_source(scenario_id)
     scenario_bytes = scenario_path.read_bytes()
     tree = fork_rules.parse_scenario(scenario_bytes.decode("utf-8"))
+    try:
+        bound = role_templates.bindings(tree, project())
+    except role_templates.TemplateError as error:
+        raise ValueError(f"packet not frozen: {error}") from None
     series = list(series or [])
     prices = list(prices or [])
     if not series and not prices:
@@ -466,6 +636,7 @@ def freeze_evidence_packet(scenario_id: str, run_asof: str, series: list[dict],
                              "reason": "no row known at the packet as-of in the requested window"})
         observations.extend(rows)
     price_rows: list[dict] = []
+    requested_tickers: list[str] = []
     for request in prices:
         ticker = str(request["ticker"])
         securities = pit_security(ticker, run_asof)["securities"]
@@ -474,6 +645,7 @@ def freeze_evidence_packet(scenario_id: str, run_asof: str, series: list[dict],
             excluded.append({"item": f"prices {ticker}",
                              "reason": f"ticker resolved to {len(sec_ids)} securities at the as-of"})
             continue
+        requested_tickers.append(ticker.strip().upper())
         found = pit_price_history(sec_ids[0], run_asof, str(request["start_date"]),
                                   str(request["end_date"]), int(request.get("limit", 50)))
         price_rows.extend(_admit_rows(found["rows"], at, f"prices {ticker}", excluded))
@@ -493,6 +665,11 @@ def freeze_evidence_packet(scenario_id: str, run_asof: str, series: list[dict],
             "currency", "knowledge_time", "revision_seq", "source_id", "pit_class")}}
         for index, row in enumerate(price_rows, start=1)
     ]
+    issuers = []
+    for parsed in (blinding.parse_sec_series(row["series_id"]) for row in admitted_observations):
+        if parsed and parsed["ticker"] not in issuers:
+            issuers.append(parsed["ticker"])
+    style_rows = derived_style_rows(issuers, run_asof, at, excluded) if (style_scores and issuers) else []
     frozen_exclusions = [
         {"exclusion_id": f"X{index}", "item": str(item.get("item", ""))[:300],
          "reason": str(item.get("reason", ""))[:600]}
@@ -519,19 +696,25 @@ def freeze_evidence_packet(scenario_id: str, run_asof: str, series: list[dict],
     if problems:
         raise ValueError("packet not frozen: " + "; ".join(problems))
     here = Path(__file__).resolve()
+    scenario_block = {
+        "id": str(scenario_id).strip(), "path": scenario_rel,
+        "sha256": sha256_hex(scenario_bytes), "name": tree.name,
+        "description": tree.description, "rewards": tree.rewards,
+        "headline_outcomes": tree.headline_outcomes, "outcomes": tree.outcomes,
+        "states": tree.fork_view(),
+    }
+    if bound:
+        scenario_block["role_templates"] = role_templates.frozen_hashes(bound)
+    limits = [*PACKET_LIMITS, *([BLIND_LIMIT] if blind_decision["blind"] else []),
+              *([STYLE_LIMIT] if style_rows else []),
+              *[str(x)[:600] for x in (interpretation_limits or [])]]
     body = {
         "schema": PACKET_SCHEMA,
         "authority": "RESEARCH_PILOT_ONLY",
         "run_asof_utc": run_asof_utc,
         "asof_utc_naive": at.isoformat(timespec="seconds"),
         "warehouse_contract": "Only obs_asof/price_asof outputs are admitted as factual inputs.",
-        "scenario": {
-            "id": str(scenario_id).strip(), "path": scenario_rel,
-            "sha256": sha256_hex(scenario_bytes), "name": tree.name,
-            "description": tree.description, "rewards": tree.rewards,
-            "headline_outcomes": tree.headline_outcomes, "outcomes": tree.outcomes,
-            "states": tree.fork_view(),
-        },
+        "scenario": scenario_block,
         "warehouse_audit": {"status": receipt.get("status"), "checks": receipt.get("checks"),
                             "audited_at_utc": receipt.get("audited_at_utc"),
                             "receipt_sha256": receipt_sha},
@@ -539,32 +722,72 @@ def freeze_evidence_packet(scenario_id: str, run_asof: str, series: list[dict],
         "lake_signature_sha256": sha256_hex(canonical_json(signature)),
         "admitted_observations": admitted_observations,
         "admitted_prices": admitted_prices,
+        **({"derived_style_scores": style_rows} if style_rows else {}),
         "memos": frozen_memos,
         "excluded_or_missing": frozen_exclusions,
-        "interpretation_limits": [*PACKET_LIMITS, *[str(x)[:600] for x in (interpretation_limits or [])]],
+        "interpretation_limits": limits,
+        "blind": {key: blind_decision[key] for key in ("blind", "mode", "max_age_days")},
         "extension": {"server_sha256": sha256_hex(here.read_bytes()),
-                      "fork_rules_sha256": sha256_hex(here.with_name("fork_rules.py").read_bytes())},
+                      "fork_rules_sha256": sha256_hex(here.with_name("fork_rules.py").read_bytes()),
+                      **{f"{name}_sha256": sha256_hex(here.with_name(f"{name}.py").read_bytes())
+                         for name in ("blinding", "contamination", "role_templates")},
+                      **({"style_rules_sha256": sha256_hex(STYLE_RULES_PATH.read_bytes())} if style_rows else {})},
     }
     if body["warehouse_audit"]["status"] != "PASS":
         raise RuntimeError("PIT audit receipt is not PASS; run server.py --refresh-audit")
+    view = sealed = None
+    if blind_decision["blind"]:
+        tickers = []
+        for ticker in ([p["ticker"] for p in (blinding.parse_sec_series(r["series_id"])
+                                              for r in admitted_observations) if p]
+                       + [str(r["primary_ticker"]) for r in admitted_prices if r.get("primary_ticker")]
+                       + requested_tickers):
+            if ticker not in tickers:
+                tickers.append(ticker)
+        universe = security_universe()
+        body["securities"] = sealed_securities(tickers, run_asof, universe)
     packet_sha = sha256_hex(canonical_json(body))
+    if blind_decision["blind"]:
+        try:
+            view, sealed = blinding.build_blind_packet(body, packet_sha, universe=universe,
+                                                       role_view=role_templates.fork_view(bound))
+        except blinding.BlindLeak as leak:
+            raise ValueError(f"packet not frozen: {leak}; rename the scenario's actors or actions "
+                             "that name a sealed security, date or year, or freeze with blind=false") from None
     folder = packet_dir(packet_sha)
     created = _write_once(folder / "packet.json", json.dumps(body, indent=2, ensure_ascii=False))
+    blind_files = {}
+    if view is not None:
+        view_text = json.dumps(view, indent=2, ensure_ascii=False)
+        sealed_text = json.dumps(sealed, indent=2, ensure_ascii=False)
+        _write_once(folder / BLIND_VIEW_FILE, view_text)
+        _write_once(folder / SEALED_MAPPING_FILE, sealed_text)
+        blind_files = {"blind_view_sha256": sha256_hex((folder / BLIND_VIEW_FILE).read_bytes()),
+                       "sealed_mapping_sha256": sha256_hex((folder / SEALED_MAPPING_FILE).read_bytes())}
+        _write_once(folder / BLIND_DIGEST_FILE, json.dumps(blind_files, indent=2))
     if created:
         _atomic_write(folder / "receipt.json", json.dumps({
             "packet_sha256": packet_sha,
             "frozen_at_utc": datetime.now(timezone.utc).isoformat(timespec="seconds"),
-            "audit_receipt": receipt}, indent=2))
+            "audit_receipt": receipt,
+            "blind_decision": blind_decision, **blind_files}, indent=2))
     load_packet(packet_sha)
+    if view is not None:
+        load_blind(packet_sha)
     return {"packet_sha256": packet_sha, "created": created,
             "packet_path": f"{PACKETS_DIRNAME}/{packet_sha}/packet.json",
             "run_asof_utc": run_asof_utc, "scenario": body["scenario"]["path"],
+            "blind": body["blind"],
             "counts": {"observations": len(admitted_observations), "prices": len(admitted_prices),
                        "memos": len(frozen_memos), "excluded_or_missing": len(frozen_exclusions),
-                       "decision_states": len(tree.states)},
+                       "derived_style_scores": len(style_rows), "decision_states": len(tree.states),
+                       "role_templates": len(scenario_block.get("role_templates") or {})},
             "warehouse_audit": body["warehouse_audit"],
-            "next": "Role forks call inspect_evidence_packet(packet_sha256, view='role_fork') "
-                    "and submit_role_fork; then run_market_actor_sim(packet_sha256=...)."}
+            "next": ("Blind packet: a contamination probe reads inspect_evidence_packet(packet_sha256, "
+                     "view='role_fork') and calls score_contamination_guess once; then "
+                     if view is not None else "")
+                    + "Role forks call inspect_evidence_packet(packet_sha256, view='role_fork') "
+                      "and submit_role_fork; then run_market_actor_sim(packet_sha256=...)."}
 
 
 def accepted_forks(packet_sha256: str) -> list[dict]:
@@ -579,18 +802,80 @@ def accepted_forks(packet_sha256: str) -> list[dict]:
     return forks
 
 
+def fork_context(packet_sha256: str, packet: dict, tree: fork_rules.ScenarioTree) -> dict:
+    """What fork admission checks against: citable ids, role templates, sealed identities."""
+    bound = packet_bindings(packet, tree)
+    ids = fork_rules.packet_citation_ids(packet)
+    mapping = None
+    if packet_is_blind(packet):
+        _view, mapping = load_blind(packet_sha256)
+        for series in mapping.get("series") or []:
+            target = ids.get(str(series["series_id"]).casefold())
+            if target:
+                ids[str(series["series"]).casefold()] = target
+    return {"bound": bound, "ids": ids, "absence": fork_rules.packet_absence_ids(packet),
+            "forbidden": role_templates.forbidden_actions(bound),
+            "keep": set(role_templates.template_states(bound)), "mapping": mapping}
+
+
+def validate_submission(fork: dict, tree: fork_rules.ScenarioTree, packet: dict, ctx: dict) -> dict:
+    """fork_rules plus the role-template rules; every failure in one ForkRejected."""
+    problems = role_templates.validate_template_states(fork, tree, ctx["bound"], ctx["ids"], ctx["absence"])
+    try:
+        canonical = fork_rules.validate_fork(fork, tree, packet, citation_ids=ctx["ids"],
+                                             forbidden=ctx["forbidden"], keep_checklist=ctx["keep"])
+    except fork_rules.ForkRejected as rejected:
+        raise fork_rules.ForkRejected(rejected.problems + problems) from None
+    if problems:
+        raise fork_rules.ForkRejected(problems)
+    return canonical
+
+
+def _submission_contract(blind: bool, bound: dict) -> dict:
+    contract = {
+        "tool": "submit_role_fork",
+        "per_state": "memo {actor, analysis >= 120 chars discussing every action, evidence "
+                     "[packet ids" + (" or series aliases S1.." if blind else " or series_id") + "], "
+                     "missing_observables} and a propensity per action, each strictly between 0 "
+                     "and 1, summing to 1",
+        "uncited_state": f"name a missing observable and stay within "
+                         f"{fork_rules.UNCITED_UNIFORM_TOLERANCE} of uniform",
+        "forbidden": "any statement about how the scenario ends or its probability",
+    }
+    if blind:
+        contract["blind"] = ("the securities, company, sector and period are withheld: reason from the "
+                             "rendered evidence only and do not name or guess them")
+    if any(b.template for b in bound.values()):
+        contract["role_templates"] = "see role_template_contract"
+    return contract
+
+
 @mcp.tool
 def inspect_evidence_packet(packet_sha256: str, view: str = "role_fork") -> dict:
-    """Read a frozen packet. ``role_fork`` hides outcome labels, rewards and other forks."""
+    """Read a frozen packet as a role fork may: no outcome labels, rewards or other forks.
+
+    A blind packet renders without tickers, names, sectors, dates or absolute
+    scale. ``view='full'`` returns the unblinded packet of a packet that is not
+    blind; a blind packet is unblinded only by unseal_evidence_packet.
+    """
     packet = load_packet(packet_sha256)
+    blind = packet_is_blind(packet)
     if view == "full":
+        if blind:
+            raise ValueError("packet is blind: the unblinded packet is available only through "
+                             "unseal_evidence_packet, which role forks and probes do not hold")
         forks = accepted_forks(packet_sha256)
         return {**packet, "packet_sha256": packet_sha256,
                 "accepted_forks": [{"temperament": f["temperament"], "fork_sha256": f["fork_sha256"]}
                                    for f in forks]}
     if view != "role_fork":
         raise ValueError("view must be 'role_fork' or 'full'")
-    return {
+    tree = packet_tree(packet)
+    bound = packet_bindings(packet, tree)
+    if blind:
+        rendering, _sealed = load_blind(packet_sha256)
+        return {**rendering, "submission_contract": _submission_contract(True, bound)}
+    result = {
         "packet_sha256": packet_sha256,
         "authority": packet["authority"],
         "run_asof_utc": packet["run_asof_utc"],
@@ -600,16 +885,91 @@ def inspect_evidence_packet(packet_sha256: str, view: str = "role_fork") -> dict
         "memos": packet["memos"],
         "excluded_or_missing": packet["excluded_or_missing"],
         "interpretation_limits": packet["interpretation_limits"],
-        "submission_contract": {
-            "tool": "submit_role_fork",
-            "per_state": "memo {actor, analysis >= 120 chars discussing every action, evidence "
-                         "[packet ids or series_id], missing_observables} and a propensity per "
-                         "action, each strictly between 0 and 1, summing to 1",
-            "uncited_state": f"name a missing observable and stay within "
-                             f"{fork_rules.UNCITED_UNIFORM_TOLERANCE} of uniform",
-            "forbidden": "any statement about how the scenario ends or its probability",
-        },
+        "submission_contract": _submission_contract(False, bound),
     }
+    if packet.get("derived_style_scores"):
+        result["derived_style_scores"] = [{k: v for k, v in row.items() if k != "sealed_amounts"}
+                                          for row in packet["derived_style_scores"]]
+    result.update(role_templates.fork_view(bound))
+    return result
+
+
+def probe_records(packet_sha256: str) -> list[dict]:
+    folder = packet_dir(packet_sha256) / PROBES_DIRNAME
+    return [json.loads(path.read_text(encoding="utf-8")) for path in sorted(folder.glob("*.json"))] \
+        if folder.is_dir() else []
+
+
+def contamination_state(packet_sha256: str, packet: dict) -> dict:
+    """The packet's contamination status from its probes and its forks' identity mentions."""
+    blind = packet_is_blind(packet)
+    mentions: dict[str, list[dict]] = {}
+    if blind:
+        for path in sorted((packet_dir(packet_sha256) / "forks").glob("*.json")):
+            record = json.loads(path.read_text(encoding="utf-8"))
+            mentions[record["temperament"]] = record.get("identity_mentions") or []
+    return contamination.summarize(blind, probe_records(packet_sha256) if blind else [], mentions)
+
+
+@mcp.tool
+def score_contamination_guess(packet_sha256: str, guess: dict, probe_label: str = "probe") -> dict:
+    """Score a probe's single best guess of a blind packet's identity (mechanical).
+
+    Args:
+        packet_sha256: The blind packet the probe read with
+            inspect_evidence_packet(view='role_fork').
+        guess: ``{"ticker"?, "company"?, "year"?}``, one value per field;
+            leave a field out when the rendering does not suggest one.
+        probe_label: One scored guess per label (write-once).
+
+    Returns:
+        IDENTIFIED when the ticker or normalized company name equals the sealed
+        truth or the year is within one year of it, else NOT_IDENTIFIED, with
+        the fields that matched. The sealed truth itself is never returned.
+    """
+    packet = load_packet(packet_sha256)
+    if not packet_is_blind(packet):
+        raise ValueError("packet is not blind; a contamination probe applies to blind packets only")
+    label = str(probe_label or "").strip()
+    if not _PROBE_LABEL_RE.match(label):
+        raise ValueError("probe_label must be 1-64 letters, digits, '_' or '-'")
+    parsed = contamination.validate_guess(guess)
+    _view, sealed = load_blind(packet_sha256)
+    scored = contamination.score_guess(parsed, sealed["truth"])
+    record = {"schema": contamination.PROBE_SCHEMA, "packet_sha256": packet_sha256, "probe_label": label,
+              "guess": parsed, **scored,
+              "scored_at_utc": datetime.now(timezone.utc).isoformat(timespec="seconds")}
+    target = packet_dir(packet_sha256) / PROBES_DIRNAME / f"{label}.json"
+    created = _write_once(target, json.dumps(record, indent=2, ensure_ascii=False))
+    if not created:
+        existing = json.loads(target.read_text(encoding="utf-8"))
+        if existing.get("guess") != parsed:
+            raise ValueError(f"probe {label!r} already scored a different guess; one guess per probe")
+        record = existing
+    return {"packet_sha256": packet_sha256, "probe_label": label, "verdict": record["verdict"],
+            "hits": record["hits"], "duplicate": not created,
+            "status": contamination_state(packet_sha256, packet)["status"]}
+
+
+@mcp.tool
+def unseal_evidence_packet(packet_sha256: str) -> dict:
+    """The unblinded packet, its sealed mapping and its contamination state.
+
+    For the strategist, the market-anchor analyst and the ledger; never for a
+    role fork or a contamination probe.
+    """
+    packet = load_packet(packet_sha256)
+    forks = accepted_forks(packet_sha256)
+    result = {**packet, "packet_sha256": packet_sha256,
+              "accepted_forks": [{"temperament": f["temperament"], "fork_sha256": f["fork_sha256"]}
+                                 for f in forks],
+              "contamination": contamination_state(packet_sha256, packet)}
+    if packet_is_blind(packet):
+        _view, sealed = load_blind(packet_sha256)
+        digest = json.loads((packet_dir(packet_sha256) / BLIND_DIGEST_FILE).read_text(encoding="utf-8"))
+        result.update({"sealed_mapping": sealed, "blind_digest": digest,
+                       "probes": probe_records(packet_sha256)})
+    return result
 
 
 @mcp.tool
@@ -617,19 +977,24 @@ def submit_role_fork(packet_sha256: str, temperament: str, memos: dict,
                      propensities: dict) -> dict:
     """Submit one temperament fork (memos + state-local propensities) for a packet.
 
+    At a state whose actor the scenario binds to a role template, the memo
+    also carries ``checklist`` and the template's direction permissions hold.
     Rejected forks are not stored; the error lists every failed rule.
     """
     packet = load_packet(packet_sha256)
     tree = packet_tree(packet)
+    ctx = fork_context(packet_sha256, packet, tree)
     try:
-        fork = fork_rules.validate_fork(
-            {"temperament": temperament, "memos": memos, "propensities": propensities},
-            tree, packet)
+        fork = validate_submission(
+            {"temperament": temperament, "memos": memos, "propensities": propensities}, tree, packet, ctx)
     except fork_rules.ForkRejected as rejected:
         raise ValueError("role fork rejected: " + " | ".join(rejected.problems)) from None
     fork_sha = sha256_hex(canonical_json(fork))
     record = {**fork, "fork_sha256": fork_sha,
               "submitted_at_utc": datetime.now(timezone.utc).isoformat(timespec="seconds")}
+    if ctx["mapping"] is not None:
+        record["identity_mentions"] = contamination.identity_mentions(contamination.fork_texts(fork),
+                                                                      ctx["mapping"])
     target = packet_dir(packet_sha256) / "forks" / f"{fork['temperament']}.json"
     created = _write_once(target, json.dumps(record, indent=2, ensure_ascii=False))
     if not created:
@@ -645,9 +1010,14 @@ def submit_role_fork(packet_sha256: str, temperament: str, memos: dict,
 
 
 def packet_inputs(packet_sha256: str, fork_order: list[str] | None) -> tuple[Path, Path, Path, dict]:
-    """Scenario, assembled forks file and packet file for a packet-driven run."""
+    """Scenario, assembled forks file and evidence file for a packet-driven run.
+
+    The evidence file is packet.json, or for a blind packet its blind
+    rendering: the simulator then receives nothing a role fork could not see.
+    """
     packet = load_packet(packet_sha256)
     tree = packet_tree(packet)
+    ctx = fork_context(packet_sha256, packet, tree)
     forks = accepted_forks(packet_sha256)
     by_label = {fork["temperament"]: fork for fork in forks}
     if fork_order:
@@ -658,20 +1028,37 @@ def packet_inputs(packet_sha256: str, fork_order: list[str] | None) -> tuple[Pat
         order = sorted(by_label)
     ordered = [{key: by_label[label][key] for key in ("temperament", "memos", "propensities")}
                for label in order]
+    template_problems = [problem for fork in ordered for problem in role_templates.validate_template_states(
+        fork, tree, ctx["bound"], ctx["ids"], ctx["absence"])]
     try:
-        validated = fork_rules.validate_fork_set(ordered, tree, packet)
+        validated = fork_rules.validate_fork_set(ordered, tree, packet, citation_ids=ctx["ids"],
+                                                 forbidden=ctx["forbidden"], keep_checklist=ctx["keep"])
     except fork_rules.ForkRejected as rejected:
-        raise ValueError("fork set rejected: " + " | ".join(rejected.problems)) from None
+        raise ValueError("fork set rejected: " + " | ".join(rejected.problems + template_problems)) from None
+    if template_problems:
+        raise ValueError("fork set rejected: " + " | ".join(template_problems))
     document = {"packet_sha256": packet_sha256, "forks": validated}
     text = json.dumps(document, indent=2, ensure_ascii=False)
     forks_path = packet_dir(packet_sha256) / "fork_sets" / f"{sha256_hex(text.encode('utf-8'))}.json"
     if not forks_path.exists():
         _atomic_write(forks_path, text)
     scenario_path = sim_input(packet["scenario"]["path"])
-    packet_path = sim_input(f"{PACKETS_DIRNAME}/{packet_sha256}/packet.json")
+    blind = packet_is_blind(packet)
+    evidence_name = BLIND_VIEW_FILE if blind else "packet.json"
+    if blind:
+        load_blind(packet_sha256)  # refuse a rendering that no longer matches its digest
+    packet_path = sim_input(f"{PACKETS_DIRNAME}/{packet_sha256}/{evidence_name}")
+    blind_block = dict(packet.get("blind") or {"blind": False})
+    if blind:
+        blind_block.update(json.loads((packet_dir(packet_sha256) / BLIND_DIGEST_FILE).read_text(encoding="utf-8")))
+        blind_block["unblinded_packet_path"] = str(packet_dir(packet_sha256) / "packet.json")
+        blind_block["sealed_mapping_path"] = str(packet_dir(packet_sha256) / SEALED_MAPPING_FILE)
     return scenario_path, forks_path, packet_path, {
         "packet": packet, "order": order,
-        "fork_sha256": {label: by_label[label]["fork_sha256"] for label in order}}
+        "fork_sha256": {label: by_label[label]["fork_sha256"] for label in order},
+        "blind": blind_block,
+        "contamination": contamination_state(packet_sha256, packet),
+        "role_templates": packet["scenario"].get("role_templates") or {}}
 
 
 def _file_hashes(folder: Path, pattern: str, limit: int = 60) -> dict[str, str]:
@@ -700,8 +1087,9 @@ def run_manifest(run_key: str, result: dict, paths: list[Path], seed: int, rollo
         "audit_receipt_sha256_at_run": receipt_sha,
         "engine": {"run_governed_pilot.py": sha256_hex((root / "run_governed_pilot.py").read_bytes()),
                    **{f"sim/{k}": v for k, v in _file_hashes(root / "sim", "*.py").items()}},
-        "extension": {"server.py": sha256_hex(Path(__file__).read_bytes()),
-                      "fork_rules.py": sha256_hex(Path(__file__).with_name("fork_rules.py").read_bytes())},
+        "extension": {name: sha256_hex(Path(__file__).with_name(name).read_bytes())
+                      for name in ("server.py", "fork_rules.py", "blinding.py", "contamination.py",
+                                   "role_templates.py")},
         "ontology_version": os.environ.get("INVESTMENT_ONTOLOGY_VERSION") or "UNVERSIONED_NO_ONTOLOGY_RELEASE",
         "graph_asof_utc": None,
         "presets": _file_hashes(vt_home / "swarm" / "presets", "*.yaml"),
@@ -725,7 +1113,13 @@ def run_manifest(run_key: str, result: dict, paths: list[Path], seed: int, rollo
             "scenario_sha256_at_freeze": packet["scenario"]["sha256"],
             "fork_order": packet_info["order"],
             "fork_sha256": packet_info["fork_sha256"],
+            "blind": packet_info["blind"],
+            "contamination": packet_info["contamination"],
+            "role_templates": packet_info["role_templates"],
         })
+    else:
+        manifest.update({"blind": {"blind": False, "mode": "legacy_inputs"},
+                         "contamination": contamination.summarize(False, [], {})})
     return manifest
 
 
@@ -787,6 +1181,8 @@ def run_market_actor_sim(scenario: str = "", forks: str = "", evidence: str = ""
             "expected_reward": result.get("expected_reward"),
             "limitations": result["limitations"],
             "packet_sha256": packet_sha256 or None,
+            "blind": bool(manifest["blind"].get("blind")),
+            "contamination": {key: manifest["contamination"][key] for key in ("status", "skill_eligible")},
             "result_path": str(out / "pilot_result.json"),
             "manifest_path": str(out / "run_manifest.json")}
 
@@ -797,7 +1193,17 @@ def inspect_market_actor_run(run_key: str) -> dict:
     if not re.fullmatch(r"[0-9a-f]{16}", run_key):
         raise ValueError("run_key must be 16 lowercase hex characters")
     path = runtime() / "sim_runs" / run_key / "pilot_result.json"
-    return json.loads(path.read_text(encoding="utf-8"))
+    result = json.loads(path.read_text(encoding="utf-8"))
+    manifest_path = path.with_name("run_manifest.json")
+    if manifest_path.is_file():  # ZT add-on: blind and contamination status of the run
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        result["run_manifest_summary"] = {
+            "packet_sha256": manifest.get("packet_sha256"),
+            "blind": bool((manifest.get("blind") or {}).get("blind")),
+            "contamination": {k: (manifest.get("contamination") or {}).get(k)
+                              for k in ("status", "skill_eligible")},
+            "manifest_path": str(manifest_path)}
+    return result
 
 
 if __name__ == "__main__":

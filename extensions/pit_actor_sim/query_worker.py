@@ -27,6 +27,10 @@ def main() -> int:
         "c8dda43174cb3af7c737a5983e0c05654bf7b9277cbd22bee1e60506846ea432",
         "11c77d197d7b9142ff7177d1119f47093c25bc54dde3bda4e8594fa3a07728d6",
         "eb225370024711667e312d2745dfc720c8f4a42ced99dc9178708ae5bc6da841",
+        # server.UNIVERSE_SQL: dim_security identities, read only to seal blind packets
+        "3384a8dc06573cd1decb3e1f69daf3fad14c3e2c29d3bd299467268777ad3df3",
+        # server.ISSUER_FACTS_SQL: an issuer's FY SEC XBRL facts through obs_asof (zt_style)
+        "4b3d04432b6509becb4fc2b0268b1d77886e189728ff7b08c7b3a823bf7aa09d",
     }
     if hashlib.sha256(payload["sql"].encode("utf-8")).hexdigest() not in allowed:
         raise ValueError("query is not an approved PIT macro or security lookup")
