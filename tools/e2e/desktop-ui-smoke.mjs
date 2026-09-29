@@ -415,8 +415,8 @@ try {
   }
   receipt.resource_failures = resourceFailures;
   receipt.finished_at = new Date().toISOString();
-  receipt.rows.push({ id: "clean-renderer-console", status: receipt.page_errors.length || receipt.console_errors.length ? "FAIL" : "PASS",
-    evidence: { page_errors: receipt.page_errors.length, console_errors: receipt.console_errors.length } });
+  receipt.rows.push({ id: "clean-renderer-console", status: receipt.page_errors.length || receipt.console_errors.length || resourceFailures.length ? "FAIL" : "PASS",
+    evidence: { page_errors: receipt.page_errors.length, console_errors: receipt.console_errors.length, unexpected_resource_failures: resourceFailures.length } });
   receipt.status = receipt.fatal || receipt.rows.some(row => row.status === "FAIL")
     ? "NOT_ACCEPTANCE_TESTED_FAILURES" : "CORE_DESKTOP_PATH_PASSED_WITH_DECLARED_UNRUN_ROWS";
   receipt.counts = Object.fromEntries(["PASS", "FAIL", "UNRUN"].map(status => [status, receipt.rows.filter(row => row.status === status).length]));
