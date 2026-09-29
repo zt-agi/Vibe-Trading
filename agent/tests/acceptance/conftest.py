@@ -4,12 +4,18 @@ from __future__ import annotations
 
 import pytest
 
-from backtest.loaders.registry import LOADER_REGISTRY
+from backtest.loaders.registry import LOADER_REGISTRY, _ensure_registered
 
 
 @pytest.fixture(autouse=True)
 def _restore_loader_registry():
-    """pitdb registers itself on the first explicit request; undo that per test."""
+    """pitdb registers itself on the first explicit request; undo that per test.
+
+    The upstream loaders are registered first: _ensure_registered() imports them
+    once per process, so restoring a snapshot taken before that import would leave
+    an empty registry that no later caller refills (test_readme_counts saw none).
+    """
+    _ensure_registered()
     saved = dict(LOADER_REGISTRY)
     yield
     LOADER_REGISTRY.clear()
