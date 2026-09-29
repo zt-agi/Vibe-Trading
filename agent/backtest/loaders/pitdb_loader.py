@@ -65,6 +65,7 @@ from typing import Any, Dict, List, Mapping, Optional, Protocol, Sequence
 import numpy as np
 import pandas as pd
 
+from backtest.asof_guard import US_EQUITY, encode_row_knowledge
 from backtest.loaders.base import (
     NoAvailableSourceError,
     declared_currency_required,
@@ -794,11 +795,21 @@ class PitdbLoader:
 
         prices = frame[["open", "high", "low", "close"]].apply(pd.to_numeric, errors="coerce")
         null_bars = prices.isna().any(axis=1)
-        bars = prices[~null_bars].astype("float64")
-        volume = pd.to_numeric(frame.loc[~null_bars, "volume"], errors="coerce")
+        # ZT add-on: a revision captured before its own session closed (16:00
+        # New York) is an unfinished intraday bar, not a finished one known
+        # early; it is treated as unknown, like a bar outside the lag.
+        closes = US_EQUITY.close_utc(pd.to_datetime(frame["event_date"])).asi8
+        captured = pd.DatetimeIndex(pd.to_datetime(frame["knowledge_time"])).tz_localize("UTC").asi8
+        unfinished = pd.Series(captured < closes, index=frame.index)
+        dropped = null_bars | unfinished
+        bars = prices[~dropped].astype("float64")
+        volume = pd.to_numeric(frame.loc[~dropped, "volume"], errors="coerce")
         bars["volume"] = volume.fillna(0.0).astype("float64")
         if bars.empty:
-            raise PitDataError(f"{code}: every served bar has a missing OHLC value")
+            raise PitDataError(
+                f"{code}: every served bar has a missing OHLC value or was captured "
+                "before its session closed"
+            )
         try:
             bars = validate_ohlc(bars, strategy="raise")
         except ValueError as exc:
@@ -806,7 +817,7 @@ class PitdbLoader:
 
         moves = self._check_moves(con, binding, code, sec_id, bars)
 
-        kept = frame.loc[~null_bars]
+        kept = frame.loc[~dropped]
         currencies = sorted({str(c) for c in kept["currency"].dropna()})
         if len(currencies) > 1:
             raise PitDataError(f"{code}: bars quoted in several currencies {currencies}")
@@ -835,6 +846,7 @@ class PitdbLoader:
             "revised_bars": int((pd.to_numeric(kept["revision_seq"]) > 0).sum()),
             "revised_after_formation": revised_later,
             "dropped_null_bars": int(null_bars.sum()),
+            "unfinished_bars": int((unfinished & ~null_bars).sum()),
             "ineligible_bars": len(ineligible),
             "ineligible_leading_bars": len(leading),
             "quote_currency": currency,
@@ -850,6 +862,11 @@ class PitdbLoader:
                 f"{code}: {len(ineligible)} bar(s) in the window were not knowable within "
                 f"{binding.availability_lag_raw} and are treated as unknown"
             )
+        if record["unfinished_bars"]:
+            self._warnings.append(
+                f"{code}: {record['unfinished_bars']} bar(s) were captured before their "
+                "session closed and are treated as unknown"
+            )
         bars.attrs["pit"] = {
             "source": SOURCE_NAME,
             "mode": binding.mode,
@@ -857,6 +874,9 @@ class PitdbLoader:
             "availability_lag": binding.availability_lag_raw,
             "claim": binding.claim,
             **record,
+            # ZT add-on: each bar's knowledge time, for backtest.asof_guard
+            # (packed bytes; not part of the run card).
+            **encode_row_knowledge(kept["event_date"], kept["knowledge_time"]),
         }
         self._provenance[code] = record
         self._max_known[code] = known.max()
