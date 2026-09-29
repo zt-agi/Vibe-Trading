@@ -711,7 +711,7 @@ Bars: 1m / 5m / 15m / 30m / 1H / 4H / 1D, plus weekly / monthly (1W / 1M, built 
 </details>
 
 <details>
-<summary><b>Quant Library</b> <sub>326 tested functions across 24 modules, callable from every transport</sub></summary>
+<summary><b>Quant Library</b> <sub>348 tested functions across 25 modules, callable from every transport</sub></summary>
 
 `src/quantlib` holds one tested implementation of each piece of finance math the
 agent needs. Skills **import** these rather than carrying formulas inside

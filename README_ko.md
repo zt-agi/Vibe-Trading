@@ -670,7 +670,7 @@ Bars: 1m / 5m / 15m / 30m / 1H / 4H / 1D, plus weekly / monthly (1W / 1M, built 
 </details>
 
 <details>
-<summary><b>Quant Library</b> <sub>24개 모듈 326개의 테스트된 함수, 모든 경로에서 호출 가능</sub></summary>
+<summary><b>Quant Library</b> <sub>25개 모듈 348개의 테스트된 함수, 모든 경로에서 호출 가능</sub></summary>
 
 `src/quantlib`는 agent가 필요로 하는 각 금융 수학에 대해 테스트된 구현을 **하나씩만**
 보유합니다. skill은 이제 이 함수들을 **import**하며, markdown 코드 블록 안에 수식을

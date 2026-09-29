@@ -22,6 +22,8 @@ Submodules:
   multipletesting  Deflated Sharpe, CSCV/PBO and BH-FDR search corrections
   crossvalidation  Purged + embargoed splits for overlapping financial labels
   eventstudy   Abnormal returns around dated events (CAR/CAAR, Patell, BMP)
+  event_study  Knowledge-time event studies: day 0 from the disclosure instant,
+               multi-window CARs, clustering-robust tests (ZT add-on)
   factormodel  Cross-sectional style exposures, factor returns, style drift
   attribution  Brinson-Fachler allocation/selection/interaction
   impact       Market-impact and slippage models

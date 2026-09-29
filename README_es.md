@@ -675,7 +675,7 @@ Barras: 1m / 5m / 15m / 30m / 1H / 4H / 1D, más semanales / mensuales (1W / 1M,
 </details>
 
 <details>
-<summary><b>Quant Library</b> <sub>326 funciones probadas en 24 módulos, invocables desde cualquier transporte</sub></summary>
+<summary><b>Quant Library</b> <sub>348 funciones probadas en 25 módulos, invocables desde cualquier transporte</sub></summary>
 
 `src/quantlib` contiene una implementación probada de cada pieza de matemática
 financiera que el agente necesita. Las skills **importan** estas funciones en

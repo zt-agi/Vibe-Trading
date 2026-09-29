@@ -88,6 +88,8 @@ ALLOWED_MODULES: dict[str, str] = {
     "microstructure": "src.quantlib.microstructure",
     # ZT add-on: proper scores and calibration diagnostics for the forecast ledger.
     "scoring": "src.quantlib.scoring",
+    # ZT add-on: knowledge-time event studies (8-K earnings, PEAD).
+    "event_study": "src.quantlib.event_study",
 }
 
 #: Exported names refused because they write to a caller-supplied path. This
@@ -261,7 +263,9 @@ class QuantlibCallTool(BaseTool):
         "(CAR/CAAR/Patell/BMP), style factor models, deflated Sharpe and PBO, "
         "purged cross-validation, and the valuation engine (DCF / comps / "
         "three-statement), plus forecast scoring (Brier, log loss, CRPS, PIT, "
-        "coverage; ZT add-on). Read-only and pure-compute: it fetches no data and "
+        "coverage; ZT add-on) and knowledge-time event studies (day 0 from the "
+        "disclosure instant, clustering-robust CAR tests, Beta-binomial hit "
+        "rates; ZT add-on). Read-only and pure-compute: it fetches no data and "
         "writes no files. Start with action='list' to see modules, then "
         "action='list' with a module to see its functions, then "
         "action='describe' for a signature. "
