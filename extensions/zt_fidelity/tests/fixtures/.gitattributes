@@ -1,0 +1,2 @@
+# ZT add-on: the synthetic export mimics a Windows download (BOM, CRLF); keep it byte-exact.
+* binary

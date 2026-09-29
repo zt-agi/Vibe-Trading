@@ -1,0 +1,17 @@
+﻿Account number,Account name,Symbol,Description,Quantity,Last price,Last price change,Current value,Today's gain/loss dollar,Today's gain/loss percent,Total gain/loss dollar,Total gain/loss percent,Percent of account,Cost basis total,Average cost basis,Type
+X00001111,Individual,SPAXX**,HELD IN MONEY MARKET,,,,"$1,250.00",,,,,25.35%,,,Cash,
+X00001111,Individual,NVDA,NVIDIA CORPORATION COM,10,$181.50,+$2.10,"$1,815.00",+$21.00,+1.17%,+$815.00,+81.50%,36.82%,"$1,000.00",$100.00,Cash,
+X00001111,Individual,AAPL,APPLE INC,5.5,$230.00,-$1.00,"$1,265.00",-$5.50,-0.43%,+$165.00,+15.00%,25.66%,"$1,100.00",$200.00,Margin,
+X00001111,Individual, -NVDA261218C200,NVDA DEC 18 2026 $200 CALL,2,$4.50,+$0.30,$900.00,+$60.00,+7.14%,-$100.00,-10.00%,18.26%,"$1,000.00",$5.00,Margin,
+X00001111,Individual,Pending activity,,,,,-$300.00,,,,,,,,,
+Y00002222,ROLLOVER IRA,FDRXX**,HELD IN MONEY MARKET,,,,$500.00,,,,,2.99%,,,Cash,
+Y00002222,ROLLOVER IRA,NVDA,NVIDIA CORPORATION COM,20,$181.50,+$2.10,"$3,630.00",+$42.00,+1.17%,"+$1,630.00",+81.50%,21.74%,"$2,000.00",$100.00,Cash,
+Y00002222,ROLLOVER IRA,912797XX1,UNITED STATES TREAS BILLS 0.00000% 03/18/2027,"10,000",$98.50,+$0.01,"$9,850.00",+$1.00,+0.01%,+$50.00,+0.51%,59.00%,"$9,800.00",$98.00,Cash,
+Y00002222,ROLLOVER IRA,FXAIX,FIDELITY 500 INDEX FUND,12.345,$220.00,+$1.00,"$2,715.90",+$12.35,+0.46%,--,--,16.27%,--,--,Cash,
+Y00002222,ROLLOVER IRA,QQQ,INVESCO QQQ TR UNIT SER 1,--,--,--,--,--,--,--,--,--,--,--,Cash,
+
+"SYNTHETIC TEST FIXTURE. Stand-in for the disclaimer paragraph Fidelity appends to every export; it is one quoted cell, holds commas, and must never be read as a position row."
+
+"Stand-in for the brokerage services paragraph, 1 Example Street, Nowhere, ZZ 00000."
+
+"Date downloaded Sep-26-2026 5:15 p.m ET"
