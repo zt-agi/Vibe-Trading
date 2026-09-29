@@ -195,25 +195,42 @@ def test_rerun_is_idempotent_and_refresh_needs_replace(tmp_path, contracts, dest
     assert verify_packaged(dest)["ok"]
 
 
-def test_refuses_to_write_outside_the_destination(tmp_path, contracts, dest):
-    outside = tmp_path / "outside"
-    outside.mkdir()
-    source = write_skill(tmp_path / "src", QUOTED)
-    dest.mkdir(parents=True)
-    (dest / "demo-skill").symlink_to(outside, target_is_directory=True)
-    with pytest.raises(PackagingError, match="outside the destination"):
-        package_skills([source], dest, contracts, replace=True)
-    assert list(outside.iterdir()) == []
+def symlink_or_skip(link: Path, target: Path, *, directory: bool = False) -> None:
+    """Create a symlink, or skip the test where the OS refuses one.
+
+    Windows without Developer Mode or the create-symbolic-link privilege raises
+    OSError (WinError 1314); that is a property of the host, not a packaging
+    failure, so the symlink checks are skipped there instead of failing.
+    """
+    try:
+        link.symlink_to(target, target_is_directory=directory)
+    except (OSError, NotImplementedError) as exc:
+        pytest.skip(f"this OS user may not create symlinks ({type(exc).__name__}: {exc})")
+
+
+def test_refuses_escaping_paths_and_slugs(tmp_path, contracts, dest):
     with pytest.raises(PackagingError, match="outside the destination"):
         _inside(dest.resolve(), dest / ".." / "escape")
     evil = write_skill(tmp_path / "src2", 'name: "../../evil"\ndescription: x\n', dirname="evil")
     with pytest.raises(PackagingError, match="slug"):
         package_skills([evil], tmp_path / "dest2", contracts)
+    assert not (tmp_path / "dest2").exists()
+
+
+def test_refuses_to_write_outside_the_destination(tmp_path, contracts, dest):
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    source = write_skill(tmp_path / "src", QUOTED)
+    dest.mkdir(parents=True)
+    symlink_or_skip(dest / "demo-skill", outside, directory=True)
+    with pytest.raises(PackagingError, match="outside the destination"):
+        package_skills([source], dest, contracts, replace=True)
+    assert list(outside.iterdir()) == []
     linked = write_skill(tmp_path / "src3", QUOTED)
-    (linked / "references" / "leak.md").symlink_to(tmp_path / "outside")
+    symlink_or_skip(linked / "references" / "leak.md", tmp_path / "outside")
     with pytest.raises(PackagingError, match="symlinked"):
         package_skills([linked], tmp_path / "dest3", contracts)
-    assert not (tmp_path / "dest2").exists() and not (tmp_path / "dest3").exists()
+    assert not (tmp_path / "dest3").exists()
 
 
 def test_windows_drive_rule():
