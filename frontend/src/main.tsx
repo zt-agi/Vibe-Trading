@@ -1,3 +1,4 @@
+import "./bootstrapAuth"; // ZT add-on: must stay first (takes #vt_key out of the URL)
 import './i18n';
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
