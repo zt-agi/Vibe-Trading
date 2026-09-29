@@ -236,6 +236,59 @@ def evaluation_start_index(config: Dict[str, Any], dates: pd.DatetimeIndex) -> i
     return start
 
 
+def _session_signal(signal: pd.Series, own_idx: pd.DatetimeIndex, code: str = "") -> np.ndarray:
+    """ZT add-on: a symbol's signal on its own sessions, as a writable float64 array.
+
+    A value stamped between two of the symbol's bars (a weekend or holiday
+    decision, an event stamped with its time) used to vanish in the reindex.
+    On daily bars it is now the latest decision before the next session: it
+    takes the row of the last session at or before its stamp, replacing that
+    session's earlier value, so it fills at the next session's open, the first
+    fill after it was made. On intraday bars, whose stamp may mark a bar's
+    start or its end, it moves to the next bar instead and fills only an empty
+    slot there, which is never early under either convention. A value before
+    the first daily bar or after the last intraday bar is ignored (logged).
+    """
+    values = signal.reindex(own_idx)
+    index = signal.index
+    if (
+        len(own_idx) == 0
+        or not isinstance(index, pd.DatetimeIndex)
+        or index.equals(own_idx)
+        or (index.tz is None) != (own_idx.tz is None)
+        or not own_idx.is_monotonic_increasing
+    ):
+        return values.values.astype(np.float64, copy=True)
+    extra = signal[~index.isin(own_idx)]
+    extra = extra[extra.notna()].sort_index()
+    if extra.empty:
+        return values.values.astype(np.float64, copy=True)
+    naive = own_idx.tz_localize(None) if own_idx.tz is not None else own_idx
+    daily = bool((naive == naive.normalize()).all())
+    if daily:
+        slots = own_idx.searchsorted(extra.index, side="right") - 1
+        inside = slots >= 0
+    else:
+        slots = own_idx.searchsorted(extra.index, side="left")
+        inside = slots < len(own_idx)
+    if not inside.all():
+        logger.warning(
+            "%s: %d signal value(s) stamped outside the bars were ignored",
+            code, int((~inside).sum()),
+        )
+    if not inside.any():
+        return values.values.astype(np.float64, copy=True)
+    rolled = pd.Series(extra.to_numpy()[inside], index=own_idx[slots[inside]])
+    rolled = rolled.groupby(level=0).last().reindex(own_idx)
+    take = rolled.notna() if daily else rolled.notna() & values.isna()
+    logger.info(
+        "%s: %d signal value(s) stamped between bars act on the next bar",
+        code, int(take.sum()),
+    )
+    values = values.where(~take, rolled)
+    return values.values.astype(np.float64, copy=True)
+
+
 def _align(
     data_map: Dict[str, pd.DataFrame],
     signal_map: Dict[str, pd.Series],
@@ -321,7 +374,7 @@ def _align(
         # float64 source returns a read-only view (e.g. pandas copy-on-write),
         # which the in-place nan_to_num/clip below would reject.
         own_idx = data_map[c].index
-        sig_vals = signal_map[c].reindex(own_idx).values.astype(np.float64, copy=True)
+        sig_vals = _session_signal(signal_map[c], own_idx, c)  # ZT add-on
         # fillna(0) + clip in numpy
         np.nan_to_num(sig_vals, copy=False, nan=0.0)
         np.clip(sig_vals, -1.0, 1.0, out=sig_vals)
