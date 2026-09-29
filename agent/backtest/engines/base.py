@@ -1523,6 +1523,17 @@ class BaseEngine(ABC):
             if need_close:
                 if self.can_execute(symbol, 0, bar):
                     open_price = self.execution_open(bar)
+                    # ZT add-on: no usable open (NaN/inf, zero, or negative where
+                    # not allowed) defers the close to the next bar instead of
+                    # booking it at that price.
+                    if not math.isfinite(open_price) or open_price == 0 or (
+                        open_price < 0 and not self.allow_nonpositive_prices
+                    ):
+                        logger.warning(
+                            "No usable open for %s at %s (%r); its close waits for the next bar",
+                            symbol, ts, open_price,
+                        )
+                        return
                     price = self.apply_slippage(open_price, -current_pos.direction)
                     self._close_position(symbol, price, ts, "signal")
                 else:
@@ -1578,7 +1589,13 @@ class BaseEngine(ABC):
         # Zero is always rejected (size = notional / price is undefined);
         # negatives are rejected unless this engine opted into non-positive
         # prices, in which case abs()-based sizing/margin below handle them.
-        elif open_price == 0 or (open_price < 0 and not self.allow_nonpositive_prices):
+        # ZT add-on: a NaN/inf open is as unusable as a zero one. It used to
+        # slip past both comparisons, size a NaN order and turn capital NaN.
+        elif (
+            not math.isfinite(open_price)
+            or open_price == 0
+            or (open_price < 0 and not self.allow_nonpositive_prices)
+        ):
             rejected("invalid_price")
             return None
         price = self.apply_slippage(open_price, direction)
