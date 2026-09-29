@@ -169,6 +169,10 @@ def _rows_to_frame(
     frame = frame.drop(columns=["trade_date"])
     frame.index = pd.DatetimeIndex(index)
     frame.index.name = "trade_date"
+    if _is_intraday_interval(interval):
+        from backtest.loaders.base import declare_utc_bar_timing
+
+        declare_utc_bar_timing(frame, convention="start")
 
     for column in _OHLCV_COLUMNS:
         if column not in frame.columns:

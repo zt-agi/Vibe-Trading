@@ -15,6 +15,13 @@ if _destination:
     if _evidence.drive.upper() != "E:" or _home.drive.upper() != "E:":
         os._exit(91)
     try:
+        from dotenv import load_dotenv
+        from urllib.parse import urlparse
+
+        load_dotenv(_home / ".env", override=False)
+        assert os.environ.get("LANGCHAIN_PROVIDER") == "ollama"
+        assert os.environ.get("LANGCHAIN_MODEL_NAME")
+        assert urlparse(os.environ.get("OLLAMA_BASE_URL", "")).hostname in ("127.0.0.1", "localhost", "::1")
         _config = json.loads((_home / "agent.json").read_text(encoding="utf-8"))
         assert _config.get("mcpServers", {}) == {}
         assert os.environ.get("VIBE_TRADING_ENABLE_SHELL_TOOLS") == "false"
@@ -39,7 +46,8 @@ if _destination:
             return EmptyRegistry()
 
         src.tools.build_registry = empty_registry
-        record(phase="installed", mcp_servers=0, shell_enabled=False)
+        record(phase="installed", mcp_servers=0, shell_enabled=False,
+               provider=os.environ.get("LANGCHAIN_PROVIDER"), model=os.environ.get("LANGCHAIN_MODEL_NAME"))
     except BaseException:
         # sitecustomize normally logs an error and continues: fail closed here.
         os._exit(92)

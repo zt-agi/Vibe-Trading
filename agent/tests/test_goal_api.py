@@ -34,6 +34,19 @@ def _add_user_message(session_id: str) -> None:
     )
 
 
+def test_missing_goal_optional_query_is_null_and_default_is_404(tmp_path: Path, monkeypatch) -> None:
+    client = _client(tmp_path, monkeypatch)
+    sid = _session_id(client)
+    absent = client.get(f"/sessions/{sid}/goal?optional=true")
+    assert absent.status_code == 200 and absent.json() is None
+    assert client.get(f"/sessions/{sid}/goal").status_code == 404
+    assert client.get("/sessions/nonexistent/goal?optional=true").status_code == 404
+    created = client.post(f"/sessions/{sid}/goal", json={"objective": "Evaluate NVDA momentum."})
+    assert created.status_code == 201
+    current = client.get(f"/sessions/{sid}/goal?optional=true")
+    assert current.status_code == 200 and current.json()["goal"]["objective"] == "Evaluate NVDA momentum."
+
+
 def test_api_goal_uses_full_default_research_checklist(tmp_path: Path, monkeypatch) -> None:
     client = _client(tmp_path, monkeypatch)
     sid = _session_id(client)

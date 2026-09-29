@@ -156,6 +156,9 @@ def _rates_to_frame(rates: Any, start_date: str, end_date: str) -> pd.DataFrame 
         return None
     frame["trade_date"] = pd.to_datetime(frame["time"], unit="s")
     frame = frame.set_index("trade_date").sort_index()
+    from backtest.loaders.base import declare_utc_bar_timing
+
+    declare_utc_bar_timing(frame, convention="start")
     # Forex real_volume is zero on most brokers; tick_volume is the standard proxy.
     frame["volume"] = frame.get("tick_volume", 0)
     # Bars carry intraday timestamps; the end date is inclusive of its whole day.

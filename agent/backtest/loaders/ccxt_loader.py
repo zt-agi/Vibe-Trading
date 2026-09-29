@@ -476,6 +476,9 @@ class DataLoader:
         df = pd.DataFrame(all_rows, columns=["timestamp", "open", "high", "low", "close", "volume"])
         df["trade_date"] = pd.to_datetime(df["timestamp"], unit="ms")
         df = df.set_index("trade_date").sort_index()
+        from backtest.loaders.base import declare_utc_bar_timing
+
+        declare_utc_bar_timing(df, convention="start")
 
         start_dt = pd.Timestamp(since_ms, unit="ms")
         end_dt = pd.Timestamp(end_ms, unit="ms")

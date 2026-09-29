@@ -199,7 +199,7 @@ def as_utc(value: Any) -> pd.Timestamp:
 
 def _utc_index(values: Any) -> pd.DatetimeIndex:
     """UTC DatetimeIndex of stamps; tz-naive ones are taken as UTC."""
-    return pd.DatetimeIndex(pd.to_datetime(values, utc=True))
+    return pd.DatetimeIndex(pd.to_datetime(values, utc=True)).as_unit("ns")
 
 
 def _fmt(stamp: Any) -> str:
@@ -252,10 +252,71 @@ def decode_row_knowledge(pit: Mapping[str, Any]) -> Optional[pd.Series]:
 def _is_daily(index: pd.DatetimeIndex, interval: str) -> bool:
     if interval in DAILY_INTERVALS:
         return True
-    if interval in _INTRADAY_SPANS:
+    if intraday_span(interval) is not None:
         return False
     naive = index.tz_localize(None) if index.tz is not None else index
     return bool(len(naive)) and bool((naive == naive.normalize()).all())
+
+
+def intraday_span(interval: str) -> Optional[pd.Timedelta]:
+    """Fixed supported bar width, preserving minute ``1m`` vs month ``1M``."""
+    token = str(interval).strip()
+    if token.endswith(("h", "H")):
+        token = token[:-1] + "H"
+    return _INTRADAY_SPANS.get(token)
+
+
+def bar_end_times(
+    frame: pd.DataFrame,
+    *,
+    clock: SessionClock = US_EQUITY,
+    interval: str = "1D",
+) -> Tuple[pd.DatetimeIndex, str]:
+    """Physical bar ends in UTC, independent of supplied knowledge times.
+
+    Intraday naive stamps require ``attrs['bar_timezone']``; a symbol's
+    daily session zone cannot reveal how a provider normalized its index.
+    ``bar_timestamp_convention`` is ``start`` or ``end``. When the zone is
+    known but the convention is absent, assume start conservatively and
+    explicitly label that assumption. Invalid/ambiguous metadata fails closed.
+    """
+    index = pd.DatetimeIndex(frame.index)
+    if _is_daily(index, interval):
+        return clock.close_utc(index), "session close of the bar"
+    span = intraday_span(interval)
+    if span is None:
+        raise LookAheadError(f"unsupported intraday bar interval {interval!r}")
+    zone = frame.attrs.get("bar_timezone")
+    if index.tz is None:
+        if not isinstance(zone, str) or not zone.strip():
+            raise LookAheadError("unknown intraday timezone: declare frame.attrs['bar_timezone']")
+        try:
+            stamps = index.tz_localize(zone, ambiguous="raise", nonexistent="raise").tz_convert("UTC")
+        except Exception as exc:  # invalid zones and ambiguous wall times prove nothing
+            raise LookAheadError(f"unresolved intraday timezone {zone!r}: {exc}") from exc
+    else:
+        stamps = index.tz_convert("UTC")
+        zone = str(index.tz)
+    convention = frame.attrs.get("bar_timestamp_convention")
+    if convention is None:
+        convention = "start"
+        basis = f"end of the bar (assumed start conservatively; timezone {zone})"
+    elif convention in ("start", "end"):
+        basis = f"end of the bar ({convention} stamp; timezone {zone})"
+    else:
+        raise LookAheadError(f"unknown intraday timestamp convention {convention!r}")
+    ends = (stamps + span if convention == "start" else stamps).as_unit("ns")
+    if "bar_end_time" in frame.columns:
+        # A resampled bucket can contain a source candle which ends after its
+        # nominal boundary (e.g. hourly NY :30 stamps in UTC-aligned 4H bins).
+        # This bound may delay completion, never advance it. It is a column so
+        # slices and the ordinary Parquet cache preserve each bucket's bound.
+        constituent_ends = _utc_index(frame["bar_end_time"])
+        values = np.maximum(ends.asi8, constituent_ends.asi8)
+        values[constituent_ends.asi8 == _NAT] = _NAT
+        ends = _utc_index(values)
+        basis += "; no earlier than constituent bar ends"
+    return ends, basis
 
 
 def knowledge_times(
@@ -294,11 +355,7 @@ def knowledge_times(
         if bound is not None:
             return bound, bound_basis
 
-    if _is_daily(index, interval):
-        return clock.close_utc(index), "session close of the bar"
-    span = _INTRADAY_SPANS.get(interval, pd.Timedelta(0))
-    stamps = index.tz_localize("UTC") if index.tz is None else index.tz_convert("UTC")
-    return stamps + span, "end of the bar"
+    return bar_end_times(frame, clock=clock, interval=interval)
 
 
 def _pit_bound(
@@ -364,15 +421,15 @@ def check_rows(
             f"{name}: {int(late.sum())} row(s) not known by the decision cutoff "
             f"{_fmt(limit)}; first: row {_fmt(frame.index[i])} known {_fmt(known[i])} ({basis})"
         )
-    explicit = basis.startswith(("knowledge_time", "pitdb row"))
-    if explicit and _is_bar_frame(frame) and _is_daily(pd.DatetimeIndex(frame.index), interval):
-        closes = clock.close_utc(frame.index)
-        partial = stamps < closes.asi8
+    if _is_bar_frame(frame):
+        closes, _ = bar_end_times(frame, clock=clock, interval=interval)
+        partial = (closes.asi8 == _NAT) | (closes.asi8 > limit.value) | (stamps < closes.asi8)
         if partial.any():
             i = int(np.flatnonzero(partial)[0])
             raise LookAheadError(
                 f"{name}: {int(partial.sum())} unfinished bar(s): row {_fmt(frame.index[i])} "
-                f"was captured {_fmt(known[i])}, before its session closed at {_fmt(closes[i])}"
+                f"was captured {_fmt(known[i])}, with bar end {_fmt(closes[i])} "
+                f"and cutoff {_fmt(limit)}"
             )
 
 
@@ -389,6 +446,9 @@ def asof_rows(
     known, _ = knowledge_times(frame, clock=clock, interval=interval)
     stamps = known.asi8
     keep = (stamps != _NAT) & (stamps <= as_utc(cutoff).value)
+    if _is_bar_frame(frame):
+        ends, _ = bar_end_times(frame, clock=clock, interval=interval)
+        keep &= (ends.asi8 != _NAT) & (ends.asi8 <= as_utc(cutoff).value) & (stamps >= ends.asi8)
     return frame.loc[keep]
 
 
@@ -738,23 +798,24 @@ def drop_unfinished_bars(
     interval: str,
     now: Any = None,
 ) -> Tuple[Dict[str, pd.DataFrame], List[str]]:
-    """Drop daily bars whose session had not closed at ``now``.
+    """Drop bars whose session or intraday interval had not ended at ``now``.
 
     A loader asked for bars through today serves today's bar while the session
     is still running (yfinance does, with the last trade as its close); used
     as a finished bar it becomes a signal input and the final mark. Frames
-    with pitdb provenance are left alone: the pitdb loader drops its own
-    unfinished bars by knowledge time.
+    with daily pitdb provenance are left alone: that EOD loader drops its
+    own unfinished bars. Intraday frames require an independently resolved
+    bar end even when provenance or an explicit knowledge time is supplied.
 
     Args:
         data_map: ``code -> frame`` as served.
-        interval: Interval the loader was asked for; only daily bars are trimmed.
+        interval: Interval the loader was asked for.
         now: Reference time (default: the wall clock).
 
     Returns:
         The trimmed map and one note per trimmed code.
     """
-    if interval not in DAILY_INTERVALS:
+    if interval not in DAILY_INTERVALS and intraday_span(interval) is None:
         return dict(data_map), []
     reference = as_utc(now) if now is not None else utc_now()
     out: Dict[str, pd.DataFrame] = {}
@@ -764,18 +825,32 @@ def drop_unfinished_bars(
             frame is None
             or len(frame) == 0
             or not isinstance(frame.index, pd.DatetimeIndex)
-            or isinstance(frame.attrs.get("pit"), Mapping)
+            or (interval in DAILY_INTERVALS and isinstance(frame.attrs.get("pit"), Mapping))
         ):
             out[code] = frame
             continue
-        unfinished = clock_for(code).close_utc(frame.index).asi8 > reference.value
+        try:
+            ends, basis = bar_end_times(frame, clock=clock_for(code), interval=interval)
+        except LookAheadError as exc:
+            # Preserve ordinary research access; guarded runs reject this frame
+            # in check_rows instead of guessing its provider's wall-clock zone.
+            out[code] = frame
+            notes.append(f"{code}: unfinished-bar timing unresolved: {exc}; guarded runs refuse it")
+            continue
+        unfinished = (ends.asi8 == _NAT) | (ends.asi8 > reference.value)
         if unfinished.any():
             dropped = frame.index[unfinished]
             out[code] = frame.loc[~unfinished]
-            notes.append(
-                f"{code}: dropped {len(dropped)} bar(s) whose session had not closed at "
-                f"{_fmt(reference)} ({', '.join(str(d.date()) for d in dropped[:3])})"
-            )
+            if interval in DAILY_INTERVALS:
+                notes.append(
+                    f"{code}: dropped {len(dropped)} bar(s) whose session had not closed at "
+                    f"{_fmt(reference)} ({', '.join(str(d.date()) for d in dropped[:3])})"
+                )
+            else:
+                notes.append(
+                    f"{code}: dropped {len(dropped)} unfinished intraday bar(s) at "
+                    f"{_fmt(reference)}; {basis}"
+                )
         else:
             out[code] = frame
     for note in notes:
@@ -889,6 +964,7 @@ __all__ = [
     "US_EQUITY",
     "as_utc",
     "asof_rows",
+    "bar_end_times",
     "calendar_days",
     "check_fill_timing",
     "check_rows",
@@ -901,6 +977,7 @@ __all__ = [
     "guard_enabled",
     "guard_run",
     "knowledge_times",
+    "intraday_span",
     "probe_signal_lookahead",
     "run_cutoff",
     "utc_now",

@@ -360,6 +360,9 @@ class DataLoader:
             df[col] = pd.to_numeric(df[col], errors="coerce")
         df["volume"] = pd.to_numeric(df["vol"], errors="coerce").fillna(0)
         df = df.dropna(subset=["trade_date"]).set_index("trade_date").sort_index()
+        from backtest.loaders.base import declare_utc_bar_timing
+
+        declare_utc_bar_timing(df, convention="start")
         df = df[~df.index.duplicated(keep="last")]
 
         start_dt = pd.Timestamp(start_ts, unit="ms")

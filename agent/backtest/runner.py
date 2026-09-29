@@ -1293,8 +1293,13 @@ def main(run_dir: Path) -> None:
     if fetch_result.pit:  # ZT add-on: the run card's `pit` block
         config["_run_card_pit"] = fetch_result.pit
     if fetch_result.unfinished_notes:  # ZT add-on
+        prefix = (
+            "bar completion checks: "
+            if any("timing unresolved" in note for note in fetch_result.unfinished_notes)
+            else "unfinished bars dropped: "
+        )
         config["_run_card_unfinished_warning"] = (
-            "unfinished bars dropped: " + "; ".join(fetch_result.unfinished_notes)
+            prefix + "; ".join(fetch_result.unfinished_notes)
         )
     interval = config.get("interval", "1D")
     if not data_map:

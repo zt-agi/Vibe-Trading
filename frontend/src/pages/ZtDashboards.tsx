@@ -168,10 +168,13 @@ export function ZtDashboards() {
           setViewer({ item, src: null, error: error instanceof Error ? error.message : String(error) });
         }
       }
-      viewerRef.current?.scrollIntoView?.({ behavior: "smooth", block: "start" });
     },
     [setSearchParams],
   );
+
+  useEffect(() => {
+    if (viewer) viewerRef.current?.scrollIntoView?.({ behavior: "smooth", block: "start" });
+  }, [viewer?.item.id, viewer?.src]);
 
   const closeReport = useCallback(() => {
     openSeq.current += 1;

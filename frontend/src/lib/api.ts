@@ -474,7 +474,7 @@ export const api = {
       method: "POST",
       body: JSON.stringify(body),
     }),
-  getGoal: (sid: string) => request<GoalSnapshot>(`/sessions/${sid}/goal`),
+  getGoal: (sid: string) => request<GoalSnapshot | null>(`/sessions/${sid}/goal?optional=true`),
   updateGoal: (sid: string, body: UpdateGoalRequest) =>
     request<UpdateGoalResponse>(`/sessions/${sid}/goal`, {
       method: "PATCH",

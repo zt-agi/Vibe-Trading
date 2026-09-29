@@ -14,7 +14,7 @@ assert.equal(await readFile(path.join(fixture.home, "agent.json"), "utf8"), '{"m
 await readFile(path.join(fixture.home, "live", "HALT"));
 const require = createRequire(process.env.VT_DESKTOP_PLAYWRIGHT);
 const { chromium } = require(process.env.VT_DESKTOP_PLAYWRIGHT);
-const browser = await chromium.launch({ headless: true });
+const browser = await chromium.launch({ headless: true, channel: process.env.VT_E2E_CHANNEL || "msedge" });
 const context = await browser.newContext({ viewport: { width: 1280, height: 820 }, extraHTTPHeaders: { Authorization: `Bearer ${fixture.key}` } });
 const page = await context.newPage();
 const result = { schema: "vt-paper-browser-acceptance/1", fixture: manifestPath, prices: fixture.prices, rows: [], console_errors: [] };
@@ -32,7 +32,8 @@ async function open(name) {
   await page.goto(`${fixture.url}/zt/approvals?proposal=${fixture.proposals[name].id}`);
   await page.getByRole("heading", { name: "Order approvals", exact: true }).waitFor();
   await page.getByRole("region", { name: "Proposal detail" }).waitFor();
-  await page.getByTestId("hash-tail").waitFor();
+  await page.getByRole("region", { name: "Proposal detail" }).getByTestId("status-chip").waitFor();
+  if (name !== "expired") await page.getByTestId("hash-tail").waitFor();
 }
 try {
   await row("checkbox-gated-paper-fill-once", async () => {
@@ -42,6 +43,8 @@ try {
     await page.getByRole("checkbox").check();
     assert.equal(await approve.isEnabled(), true);
     const targets = await page.locator("main button, main select, main textarea, main input:not([type=checkbox])").evaluateAll(elements => elements.filter(e => e.getClientRects().length).map(e => ({ label: e.getAttribute("aria-label") || e.textContent?.trim(), width: e.getBoundingClientRect().width, height: e.getBoundingClientRect().height })));
+    result.measured_targets = targets;
+    assert.deepEqual(targets.filter(target => target.width < 44 || target.height < 44), [], "Visible paper controls must be at least 44 by 44 pixels");
     await approve.click();
     await page.getByRole("region", { name: "Proposal detail" }).getByTestId("status-chip").filter({ hasText: "FILLED" }).waitFor();
     const account = (await api("/zt/paper/account")).body;
@@ -68,8 +71,11 @@ try {
   });
   await row("expired-approval-refused", async () => {
     await open("expired");
-    assert.equal(await page.getByRole("checkbox").isDisabled(), true);
-    assert.equal(await page.getByRole("button", { name: "Approve and submit once", exact: true }).isDisabled(), true);
+    await page.getByRole("region", { name: "Proposal detail" }).getByTestId("status-chip").filter({ hasText: "EXPIRED" }).waitFor();
+    const checkbox = page.getByRole("checkbox");
+    const approve = page.getByRole("button", { name: "Approve and submit once", exact: true });
+    assert.ok(await checkbox.count() === 0 || await checkbox.isDisabled());
+    assert.ok(await approve.count() === 0 || await approve.isDisabled());
     const refused = await api(`/zt/orders/proposals/${fixture.proposals.expired.id}/approve`, { method: "POST", body: JSON.stringify({ confirm_hash: fixture.proposals.expired.hash }) });
     assert.equal(refused.status, 410);
     assert.equal((await api("/zt/paper/account")).body.cash, 98000);

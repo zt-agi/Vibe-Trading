@@ -481,15 +481,17 @@ def register_sessions_routes(app: FastAPI) -> None:
 
     @app.get(
         "/sessions/{session_id}/goal",
-        response_model=GoalSnapshotResponse,
+        response_model=Optional[GoalSnapshotResponse],
         dependencies=[Depends(require_auth)],
     )
-    async def get_session_goal(session_id: str):
+    async def get_session_goal(session_id: str, optional: bool = Query(False)):
         """Return the current finance research goal snapshot for a session."""
         _host_validate_path_param(session_id, "session_id")
         _get_existing_session_or_404(session_id)
         snapshot = _get_goal_store().get_current_snapshot(session_id)
         if snapshot is None:
+            if optional:
+                return None
             raise HTTPException(status_code=404, detail="No current goal")
         return snapshot
 

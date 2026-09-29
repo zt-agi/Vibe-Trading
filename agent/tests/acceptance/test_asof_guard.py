@@ -78,8 +78,9 @@ def test_knowledge_time_precedence():
     assert basis == "session close of the bar" and closes[0] == pd.Timestamp("2026-03-05 21:00", tz="UTC")
 
     hourly = _bars(pd.date_range("2026-03-05 14:30", periods=4, freq="h"))
+    hourly.attrs.update(bar_timezone="UTC", bar_timestamp_convention="start")
     ends, basis = g.knowledge_times(hourly, interval="1H")
-    assert basis == "end of the bar" and ends[0] == pd.Timestamp("2026-03-05 15:30", tz="UTC")
+    assert basis.startswith("end of the bar") and ends[0] == pd.Timestamp("2026-03-05 15:30", tz="UTC")
 
 
 def test_row_knowledge_survives_slicing_resampling_and_concat():
@@ -189,7 +190,7 @@ def test_drop_unfinished_bars_uses_each_market_close():
                      "2026-03-10T21:00:00+00:00 (2026-03-10)"]
     pit = _pit_frame(day)
     assert len(g.drop_unfinished_bars({"AAPL.US": pit}, "1D", now="2026-03-10 12:00Z")[0]["AAPL.US"]) == 2
-    assert g.drop_unfinished_bars(data, "1H", now="2026-03-10 12:00Z")[1] == []
+    assert all("timing unresolved" in n for n in g.drop_unfinished_bars(data, "1H", now="2026-03-10 12:00Z")[1])
 
 
 # ---------------------------------------------------------------------------

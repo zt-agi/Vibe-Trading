@@ -256,6 +256,9 @@ class DataLoader:
             return None
 
         df = pd.concat(frames).set_index("trade_date").sort_index()
+        from backtest.loaders.base import declare_utc_bar_timing
+
+        declare_utc_bar_timing(df)
         df = df[~df.index.duplicated(keep="last")]
         start_dt = pd.Timestamp(start_ts, unit="s")
         end_dt = pd.Timestamp(end_ts, unit="s")

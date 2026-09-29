@@ -445,6 +445,9 @@ def _parse_candles(
         df[field] = pd.to_numeric(df[field], errors="coerce").astype(float)
 
     df = df.set_index("trade_date").sort_index()
+    from backtest.loaders.base import declare_utc_bar_timing
+
+    declare_utc_bar_timing(df)
     df = df[list(_OHLCV_FIELDS)].dropna(subset=["open", "high", "low", "close"])
 
     # The endpoint answers the exact [from, to] window; trim defensively to the

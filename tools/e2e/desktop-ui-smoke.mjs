@@ -112,24 +112,46 @@ async function portOpen(origin) {
 function alive(pid) { try { process.kill(pid, 0); return true; } catch { return false; } }
 let app, page, mainPid, logsPath;
 let stopEvidencePath;
+let keyEvidencePath;
+let lifecyclePhase = "active";
+receipt.expected_disconnects = [];
 const resourceFailures = [];
+function expectedDisconnect(url, error, kind) {
+  if (!["cleanup", "restart"].includes(lifecyclePhase) || !String(error).includes("ERR_CONNECTION_RESET")) return false;
+  let parsed; try { parsed = new URL(url); } catch { return false; }
+  if (parsed.hostname !== "127.0.0.1" || !receipt.backend_origins.includes(parsed.origin)
+      || !/^\/sessions\/[^/]+\/events$/.test(parsed.pathname) || parsed.searchParams.get("replay") !== "active") return false;
+  receipt.expected_disconnects.push({ at: new Date().toISOString(), phase: lifecyclePhase, kind, url: redact(url), error: redact(error) });
+  return true;
+}
 function watchPage(target) {
   target.on("pageerror", error => receipt.page_errors.push(redact(error.message)));
   target.on("console", message => {
     if (message.type() === "error") {
       const location = message.location();
+      if (expectedDisconnect(location.url, message.text(), "console")) return;
       receipt.console_errors.push({ text: redact(message.text()), location: { ...location, url: redact(location.url) }, page_url: redact(target.url()) });
     }
   });
   target.on("response", response => { if (response.status() >= 400) resourceFailures.push({ url: redact(response.url()), status: response.status(), type: response.request().resourceType() }); });
+  target.on("requestfailed", request => {
+    const error = request.failure()?.errorText || "request failed";
+    if (!expectedDisconnect(request.url(), error, "request")) resourceFailures.push({ url: redact(request.url()), error: redact(error), type: request.resourceType(), phase: lifecyclePhase });
+  });
 }
 async function captureLifecycle() {
-  mainPid = app.process().pid;
+  lifecyclePhase = "active";
+  mainPid = await app.evaluate(() => process.pid);
   receipt.main_pids ??= []; receipt.main_pids.push(mainPid);
   stopEvidencePath = path.join(runRoot, `shutdown-${mainPid}.jsonl`);
+  keyEvidencePath = path.join(runRoot, `input-${mainPid}.jsonl`);
   ({ logsPath } = await app.evaluate(async ({ app }, args) => {
-    const manager = await import(args.module);
-    const fs = await import("node:fs");
+    const manager = process.mainModule.require(args.module);
+    const fs = process.mainModule.require("node:fs");
+    const { BrowserWindow } = process.mainModule.require("electron");
+    for (const window of BrowserWindow.getAllWindows()) window.webContents.on("before-input-event", (_event, input) => {
+      if (input.key?.startsWith("Arrow")) fs.appendFileSync(args.inputEvidence, JSON.stringify({ at: new Date().toISOString(), type: input.type, key: input.key, code: input.code, alt: input.alt, control: input.control, meta: input.meta, shift: input.shift }) + "\n");
+    });
     const original = manager.BackendManager.prototype.stop;
     manager.BackendManager.prototype.stop = async function (...params) {
       const result = await original.apply(this, params);
@@ -137,9 +159,10 @@ async function captureLifecycle() {
       return result;
     };
     return { logsPath: app.getPath("logs") };
-  }, { module: new URL(`file:///${path.join(appDir, "dist", "backend-manager.js").replaceAll("\\", "/")}`).href, evidence: stopEvidencePath }));
+  }, { module: path.join(appDir, "dist", "backend-manager.js"), evidence: stopEvidencePath, inputEvidence: keyEvidencePath }));
 }
 async function cleanup() {
+  lifecyclePhase = "cleanup";
   assert.ok(app && Number.isInteger(mainPid), "launched main PID must be captured");
   try { await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0]?.close()); } catch {}
   await poll(async () => !alive(mainPid), 30000);
@@ -278,6 +301,8 @@ try {
     const viewer = page.getByRole("region", { name: "Report viewer", exact: true });
     await viewer.waitFor();
     const iframe = viewer.locator("iframe"); await iframe.waitFor();
+    await poll(async () => { const box = await viewer.boundingBox(); return box && box.y >= 0 && box.y + 44 < (await page.evaluate(() => innerHeight)); });
+    const initialReveal = { viewer: await viewer.boundingBox(), main: await page.evaluate(() => ({ url: location.href, scroll: document.querySelector("main")?.scrollTop, windowScroll: scrollY })) };
     const frame = await iframe.elementHandle().then(handle => handle.contentFrame());
     assert.ok(frame, "real report frame must exist");
     await frame.locator("body").waitFor();
@@ -288,7 +313,8 @@ try {
     const summary = frame.locator("summary").first();
     const exercisedDetail = Boolean(await summary.count());
     if (exercisedDetail) { await summary.click(); await summary.press("Enter"); }
-    await poll(async () => { const box = await viewer.boundingBox(); return box && box.y >= 0 && box.y + 44 < (await page.evaluate(() => innerHeight)); });
+    const afterFrameActions = { viewer: await viewer.boundingBox(), main: await page.evaluate(() => ({ scroll: document.querySelector("main")?.scrollTop, windowScroll: scrollY })) };
+    await viewer.scrollIntoViewIfNeeded();
     await iframe.screenshot({ path: path.join(screenshots, "report-frame-content.png") });
     receipt.screenshots.push(path.join(screenshots, "report-frame-content.png"));
     await screenshot("report-frame");
@@ -296,22 +322,40 @@ try {
     await page.getByRole("region", { name: "Report viewer", exact: true }).locator("iframe").waitFor({ timeout: 120000 });
     await page.getByRole("region", { name: "Report viewer", exact: true }).getByRole("button", { name: "Close", exact: true }).click();
     assert.equal(await page.getByRole("region", { name: "Report viewer", exact: true }).count(), 0);
-    return { report: name, control_count: controlCount, detail_control_exercised: exercisedDetail, reload_deep_link: true, closed: true };
+    return { report: name, control_count: controlCount, detail_control_exercised: exercisedDetail, initialReveal, afterFrameActions, reload_deep_link: true, closed: true };
   });
   await check("ordinary-back-forward-navigation", async () => {
     await page.locator('a[href="/"]').first().click();
+    const snapshot = async () => ({ renderer: await page.evaluate(() => ({ url: location.href, active: document.activeElement?.outerHTML?.slice(0, 500) })), main: await app.evaluate(({ BrowserWindow }) => { const contents = BrowserWindow.getAllWindows()[0].webContents; return { url: contents.getURL(), entries: contents.navigationHistory.getAllEntries(), index: contents.navigationHistory.getActiveIndex() }; }) });
+    const before = await snapshot();
+    const historyEvidence = { before };
+    receipt.navigation_evidence = historyEvidence;
+    try {
     await page.keyboard.press("Alt+ArrowLeft");
-    await page.waitForURL(/\/zt(?:\?|$)/, { timeout: 5000 });
+    historyEvidence.afterBackInput = await snapshot();
+    await poll(async () => new URL(page.url()).pathname === "/zt", 15000);
+    await page.getByRole("heading", { name: "ZT research dashboards", exact: true }).waitFor({ timeout: 15000 });
+    const afterBack = await snapshot();
     await page.keyboard.press("Alt+ArrowRight");
-    await page.waitForURL(url => url.pathname === "/", { timeout: 5000 });
-    return { back: "/zt", forward: "/" };
+    historyEvidence.afterForwardInput = await snapshot();
+    await poll(async () => new URL(page.url()).pathname === "/", 15000);
+    await page.locator("textarea").first().waitFor({ timeout: 15000 });
+    const afterForward = await snapshot();
+    const input = await readFile(keyEvidencePath, "utf8").catch(() => "");
+    return { back: "/zt", forward: "/", before, afterBack, afterForward, arrow_inputs: input.trim().split("\n").filter(Boolean).map(JSON.parse) };
+    } finally {
+      historyEvidence.final = await snapshot();
+      const input = await readFile(keyEvidencePath, "utf8").catch(() => "");
+      historyEvidence.arrow_inputs = input.trim().split("\n").filter(Boolean).map(JSON.parse);
+    }
   });
   await check("desktop-renderer-bridge-backend-recovery", async () => {
     const oldOrigin = await rememberOrigin();
+    lifecyclePhase = "restart";
     await page.evaluate(() => { void window.vibeDesktop.restartBackend(); });
-    await page.waitForURL(/^http:\/\/127\.0\.0\.1:\d+\//, { timeout: 90000 });
-    await poll(async () => new URL(page.url()).origin !== oldOrigin, 90000);
-    await page.locator("textarea").first().waitFor({ timeout: 30000 });
+    await page.waitForURL(url => url.hostname === "127.0.0.1" && url.origin !== oldOrigin, { timeout: 120000, waitUntil: "domcontentloaded" });
+    await page.locator("textarea").first().waitFor({ timeout: 60000 });
+    lifecyclePhase = "active";
     const newOrigin = await rememberOrigin();
     assert.notEqual(oldOrigin, newOrigin, "restart must own a new private listener");
     await poll(async () => !(await portOpen(oldOrigin)));

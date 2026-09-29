@@ -466,8 +466,26 @@ _LOADER_CACHE_TRUE_VALUES = {"1", "true", "yes", "on"}
 # persisted. v5 USD/unknown .L entries must never be served as static GBP.
 # v7: tencent fqkline paginates backward (#1410) — entries cached under the
 # forward walk hold tail-truncated multi-year series and must never be served.
-_LOADER_CACHE_VERSION = 7
-_LOADER_FRAME_METADATA_ATTRS = ("quote_currency", "currency_conversion")
+# v8: intraday timing metadata and corrected yfinance UTC normalization.
+# Legacy naive wall-clock entries cannot establish physical bar completion.
+_LOADER_CACHE_VERSION = 8
+_LOADER_FRAME_METADATA_ATTRS = (
+    "quote_currency", "currency_conversion", "bar_timezone",
+    "bar_timestamp_convention", "bar_timing_basis",
+)
+
+
+def declare_utc_bar_timing(frame: pd.DataFrame, *, convention: str | None = None) -> pd.DataFrame:
+    """Mark a boundary which explicitly decoded numeric epoch timestamps as UTC.
+
+    Absent a verified provider stamp convention, leave it absent: the guard
+    reports its conservative start assumption rather than inventing evidence.
+    """
+    frame.attrs["bar_timezone"] = "UTC"
+    frame.attrs["bar_timing_basis"] = "numeric epoch decoded as UTC"
+    if convention is not None:
+        frame.attrs["bar_timestamp_convention"] = convention
+    return frame
 
 
 def loader_cache_enabled() -> bool:
@@ -703,6 +721,10 @@ def _read_loader_cache_frame(cache_path: Path) -> pd.DataFrame | None:
         metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
     except Exception as exc:  # noqa: BLE001 - local cache miss is non-fatal
         logger.warning("loader cache metadata read failed for %s: %s", cache_path.name, exc)
+        return None
+
+    if metadata.get("version") != _LOADER_CACHE_VERSION:
+        logger.info("loader cache %s has obsolete timing schema; refetching", cache_path.name)
         return None
 
     con = None

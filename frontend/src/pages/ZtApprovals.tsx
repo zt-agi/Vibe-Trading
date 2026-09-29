@@ -242,7 +242,7 @@ export function ZtApprovals() {
             type="button"
             onClick={() => void refresh()}
             disabled={loading}
-            className="inline-flex items-center gap-2 rounded-md border px-4 py-2 text-sm font-medium transition hover:bg-muted disabled:opacity-50"
+            className="inline-flex min-h-[44px] min-w-[44px] items-center gap-2 rounded-md border px-4 py-2 text-sm font-medium transition hover:bg-muted disabled:opacity-50"
           >
             {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
             {tz("refresh", "Refresh")}
@@ -267,7 +267,7 @@ export function ZtApprovals() {
                   aria-label={tz("filter", "Status")}
                   value={statusFilter}
                   onChange={(event) => setStatusFilter(event.target.value as ProposalStatus | "")}
-                  className="rounded-md border bg-background px-2 py-1.5 text-sm"
+                  className="min-h-[44px] min-w-[44px] rounded-md border bg-background px-2 py-1.5 text-sm"
                 >
                   <option value="">{tz("all", "All")}</option>
                   {PROPOSAL_STATUSES.map((status) => (
@@ -377,7 +377,7 @@ function ProposalListView({
             aria-current={row.id === selectedId ? "true" : undefined}
             aria-label={tz("openProposal", "Open proposal {{id}}", { id: row.id })}
             className={cn(
-              "w-full rounded-md border p-3 text-start transition hover:bg-muted/60",
+              "min-h-[44px] min-w-[44px] w-full rounded-md border p-3 text-start transition hover:bg-muted/60",
               row.id === selectedId && "border-primary/60 bg-primary/5",
             )}
           >
@@ -772,7 +772,7 @@ function DecisionBox({
       ) : null}
       <div className="space-y-4">
         <div className="space-y-2">
-          <label className="flex items-start gap-2 text-sm">
+          <label className="flex min-h-[44px] min-w-[44px] items-start gap-2 text-sm">
             <input
               type="checkbox"
               checked={confirmed}
@@ -797,7 +797,7 @@ function DecisionBox({
             type="button"
             onClick={() => void approve()}
             disabled={!confirmed || expired || busy !== null || !fullHash}
-            className="inline-flex items-center gap-2 rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition hover:opacity-90 disabled:opacity-50"
+            className="inline-flex min-h-[44px] min-w-[44px] items-center gap-2 rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition hover:opacity-90 disabled:opacity-50"
           >
             {busy === "approve" ? <Loader2 className="h-4 w-4 animate-spin" /> : <ClipboardCheck className="h-4 w-4" />}
             {tz("approve", "Approve and submit once")}
@@ -812,14 +812,14 @@ function DecisionBox({
               maxLength={500}
               rows={2}
               disabled={busy !== null}
-              className="mt-1 w-full rounded-md border bg-background px-2 py-1.5 text-sm"
+              className="mt-1 min-h-[44px] min-w-[44px] w-full rounded-md border bg-background px-2 py-1.5 text-sm"
             />
           </label>
           <button
             type="button"
             onClick={() => void reject()}
             disabled={!reason.trim() || busy !== null}
-            className="inline-flex items-center gap-2 rounded-md border px-4 py-2 text-sm font-medium transition hover:bg-muted disabled:opacity-50"
+            className="inline-flex min-h-[44px] min-w-[44px] items-center gap-2 rounded-md border px-4 py-2 text-sm font-medium transition hover:bg-muted disabled:opacity-50"
           >
             {busy === "reject" ? <Loader2 className="h-4 w-4 animate-spin" /> : <XCircle className="h-4 w-4" />}
             {tz("reject", "Reject")}
@@ -907,7 +907,7 @@ function PaperPanel({
         <button
           type="button"
           onClick={() => setOpen((value) => !value)}
-          className="inline-flex items-center gap-1.5 rounded-md border px-3 py-1.5 text-xs font-medium transition hover:bg-muted"
+          className="inline-flex min-h-[44px] min-w-[44px] items-center gap-1.5 rounded-md border px-3 py-1.5 text-xs font-medium transition hover:bg-muted"
         >
           <RotateCcw className="h-3.5 w-3.5" aria-hidden="true" />
           {tz("resetOpen", "Reset paper account…")}
@@ -921,7 +921,7 @@ function PaperPanel({
               value={cash}
               onChange={(event) => setCash(event.target.value)}
               inputMode="decimal"
-              className="w-36 rounded-md border bg-background px-2 py-1"
+              className="min-h-[44px] min-w-[44px] w-36 rounded-md border bg-background px-2 py-1"
             />
           </label>
           <label className="flex flex-col gap-1">
@@ -929,14 +929,14 @@ function PaperPanel({
             <input
               value={confirmText}
               onChange={(event) => setConfirmText(event.target.value)}
-              className="w-36 rounded-md border bg-background px-2 py-1 font-mono"
+              className="min-h-[44px] min-w-[44px] w-36 rounded-md border bg-background px-2 py-1 font-mono"
             />
           </label>
           <button
             type="button"
             onClick={() => void reset()}
             disabled={confirmText !== "RESET" || busy}
-            className="inline-flex items-center gap-1.5 rounded-md border border-danger/50 px-3 py-1.5 text-xs font-medium text-danger transition hover:bg-danger/10 disabled:opacity-50"
+            className="inline-flex min-h-[44px] min-w-[44px] items-center gap-1.5 rounded-md border border-danger/50 px-3 py-1.5 text-xs font-medium text-danger transition hover:bg-danger/10 disabled:opacity-50"
           >
             {busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null}
             {tz("resetConfirm", "Reset now")}

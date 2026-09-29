@@ -218,8 +218,19 @@ def _normalize_frame(frame: pd.DataFrame, requested_interval: str) -> pd.DataFra
     normalized = normalized.apply(pd.to_numeric, errors="coerce")
 
     index = pd.DatetimeIndex(pd.to_datetime(normalized.index))
+    from backtest.asof_guard import intraday_span
+
+    intraday = intraday_span(requested_interval) is not None
     if getattr(index, "tz", None) is not None:
+        if intraday:
+            # Strip only after conversion: retaining NY wall time here made an
+            # unfinished winter 11:30 bar appear complete at 12:30 UTC.
+            index = index.tz_convert("UTC")
+            normalized.attrs["bar_timezone"] = "UTC"
+            normalized.attrs["bar_timing_basis"] = "yfinance aware index converted to UTC"
         index = index.tz_localize(None)
+    if intraday:
+        normalized.attrs["bar_timestamp_convention"] = "start"
     normalized.index = index
     normalized.index.name = "trade_date"
     normalized = normalized.sort_index()
@@ -233,15 +244,22 @@ def _normalize_frame(frame: pd.DataFrame, requested_interval: str) -> pd.DataFra
     # ``_to_yfinance_interval`` but skip this resample, silently returning
     # native 1h bars mislabeled as 4H.
     if str(requested_interval).strip().upper() == "4H" and not normalized.empty:
-        normalized = normalized.resample("4h").agg(
-            {
-                "open": "first",
-                "high": "max",
-                "low": "min",
-                "close": "last",
-                "volume": "sum",
-            }
-        )
+        from backtest.asof_guard import LookAheadError, bar_end_times
+
+        aggregation = {
+            "open": "first", "high": "max", "low": "min",
+            "close": "last", "volume": "sum",
+        }
+        try:
+            source_ends, _ = bar_end_times(normalized, interval="1H")
+        except LookAheadError:
+            # Unknown naive source zones remain available for ordinary
+            # research, but the guarded run refuses them after normalization.
+            source_ends = None
+        if source_ends is not None:
+            normalized["bar_end_time"] = source_ends
+            aggregation["bar_end_time"] = "max"
+        normalized = normalized.resample("4h").agg(aggregation)
         normalized = normalized.dropna(subset=["open", "high", "low", "close"])
         normalized.index.name = "trade_date"
 

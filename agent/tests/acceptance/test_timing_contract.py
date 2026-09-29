@@ -377,23 +377,13 @@ def test_e_the_same_bar_is_used_once_its_session_has_closed(engine, source, monk
         assert first.day == TODAY and first.source == f"{fill_field(engine)}@{TODAY.date()}"
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason=(
-        "FINDING: drop_unfinished_bars trims daily bars only, so an intraday run whose "
-        "end_date is today keeps the hour bar still forming. Intraday loaders disagree on "
-        "whether a stamp marks a bar's start or end and on its time zone, so a generic "
-        "trim could keep the forming bar or drop a finished one. FIX: let each intraday "
-        "loader declare its stamp convention and zone (frame.attrs), then drop bars whose "
-        "end is after the run cutoff."
-    ),
-)
 def test_e_forming_intraday_bar_is_never_used(monkeypatch):
     from backtest.runner import fetch_data_map
 
     hours = pd.date_range("2026-02-27 14:30", periods=3, freq="h")  # naive UTC: 09:30..11:30 NY
     frame = pd.DataFrame({"open": [1.0, 2.0, 3.0], "high": [1.5, 2.5, 3.5], "low": [0.5, 1.5, 2.5],
                           "close": [1.2, 2.2, 3.2], "volume": 1.0}, index=hours)
+    frame.attrs.update(bar_timezone="UTC", bar_timestamp_convention="start")
     install_source(monkeypatch, "memory", {"AAA.US": frame})
     monkeypatch.setattr(asof_guard, "utc_now", lambda: pd.Timestamp("2026-02-27 17:00", tz="UTC"))
     served = fetch_data_map(run_config("global_equity", "memory", codes=["AAA.US"], end="2026-02-27",
