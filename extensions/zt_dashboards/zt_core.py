@@ -470,10 +470,14 @@ def _valid_day(text: str) -> bool:
 
 def export_dates(root: Path) -> list[str]:
     base = inside(root, EXPORTS_REL)
-    if not base.is_dir():
+    try:
+        # One listing: os.scandir carries the entry type on Windows, where a per-folder
+        # is_dir() on Google Drive for desktop costs ~0.15 s (ZT add-on, 2026-09-29).
+        with os.scandir(base) as entries:
+            names = [e.name for e in entries if e.is_dir() and _DATE_RE.match(e.name) and _valid_day(e.name)]
+    except (FileNotFoundError, NotADirectoryError):
         return []
-    return sorted(p.name for p in base.iterdir()
-                  if p.is_dir() and _DATE_RE.match(p.name) and _valid_day(p.name))
+    return sorted(names)
 
 
 def resolve_snapshot_date(value: str | None, dates: list[str], now: datetime) -> str | None:
