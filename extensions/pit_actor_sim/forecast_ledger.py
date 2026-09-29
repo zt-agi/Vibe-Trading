@@ -55,6 +55,16 @@ ROW KINDS BUILT HERE
 No probability is elicited here: prediction rows carry simulator output, and
 distribution rows carry mechanical or market-implied quantiles.
 
+CONTAMINATION (ZT add-on, 2026-09-29)
+-------------------------------------
+A shard manifest may carry ``contamination`` = ``{status, skill_eligible, ...}``
+from a blind actor-simulation run (status CONTAMINATED, NOT_IDENTIFIED,
+NOT_PROBED or NOT_BLIND). The key is optional; a manifest without it is read
+as not contaminated, so older shards verify unchanged. ``record-mct`` takes it
+from the run's run_manifest.json (the sibling of ``--result`` by default). A
+CONTAMINATED run is resolved like any other but the scoreboard counts it under
+``n_excluded_contaminated`` and never in a skill estimate.
+
 CLI::
 
     python forecast_ledger.py verify        --project <dir> [--receipts <dir>]
@@ -156,6 +166,7 @@ __all__ = [
     "mct_draft",
     "distribution_rows",
     "anchor_parity",
+    "is_contaminated",
     "skill_version_entry",
     "pit_audit_receipt_entry",
     "main",
@@ -207,6 +218,12 @@ RULES_BY_CLAIM = {
     "indicator": ("unscored_indicator",),
 }
 ANCHOR_STATUSES = ("market-anchored", "base-rate-anchored", "elicited-only")
+#: Blind-packet contamination status an actor-simulation run manifest carries
+#: (ZT add-on 2026-09-29, extensions/pit_actor_sim/contamination.py). Optional
+#: and additive: a manifest without it is treated as not contaminated.
+CONTAMINATION_STATUSES = ("CONTAMINATED", "NOT_IDENTIFIED", "NOT_PROBED", "NOT_BLIND")
+#: Schema of a blind packet rendering; the ledger records the unblinded packet.
+BLIND_VIEW_SCHEMA = "vt.actor_packet.blind_view.v1"
 PIT_CLASSES = ("TRUE_PIT", "OBSERVED_PIT", "RECONSTRUCTED_PIT", "NON_PIT")
 MONITORABILITY = ("READY", "PARTIAL", "MANUAL", "BLOCKED")
 OBSERVATION_RULES = ("exact_event_date", "last_on_or_before", "nth_after_origin")
@@ -812,6 +829,22 @@ def validate_row(row: Mapping[str, Any], manifest: Mapping[str, Any]) -> None:
     validate_forecast(row, where)
 
 
+def is_contaminated(manifest: Mapping[str, Any]) -> bool:
+    """Whether a run manifest records a CONTAMINATED blind run (absent means no)."""
+    block = manifest.get("contamination")
+    return isinstance(block, Mapping) and block.get("status") == "CONTAMINATED"
+
+
+def _validate_contamination(block: Any, where: str) -> None:
+    if block is None:
+        return
+    if not isinstance(block, Mapping) or block.get("status") not in CONTAMINATION_STATUSES:
+        raise SchemaError(f"{where}.contamination.status must be one of {CONTAMINATION_STATUSES}")
+    if block.get("skill_eligible") is not (block["status"] != "CONTAMINATED"):
+        raise SchemaError(f"{where}.contamination.skill_eligible must be false exactly when the run is "
+                          "CONTAMINATED")
+
+
 def validate_manifest(manifest: Mapping[str, Any], rows: Sequence[Mapping[str, Any]]) -> None:
     """Check a run manifest (line 1) against v2 (+ v2.1) and its rows."""
     where = "run_manifest"
@@ -871,6 +904,7 @@ def validate_manifest(manifest: Mapping[str, Any], rows: Sequence[Mapping[str, A
         raise SchemaError(f"{where}: PIT violations present but status is {manifest['status']!r}")
     if _clean(manifest["pit_violations"]) != _clean(recomputed):
         raise SchemaError(f"{where}.pit_violations does not match the recomputed violations")
+    _validate_contamination(manifest.get("contamination"), where)
 
 
 # ---------------------------------------------------------------------------
@@ -1378,22 +1412,28 @@ def _resolution_map(ledger: ProjectLedger) -> tuple[dict[str, dict], list[str]]:
 
 
 def _scoreboard(ledger: ProjectLedger, resolutions: Mapping[str, dict]) -> dict:
-    """Aggregate stored scores per method; only VALID runs count toward skill."""
-    targets = {row["id"]: (row, shard.manifest["status"]) for shard, row, _ in ledger.rows()}
+    """Aggregate stored scores per method; only VALID, uncontaminated runs count toward skill."""
+    targets = {row["id"]: (row, shard.manifest["status"], is_contaminated(shard.manifest))
+               for shard, row, _ in ledger.rows()}
     groups: dict[tuple, dict] = {}
     for target_id, res in resolutions.items():
         if target_id not in targets:
             continue
-        target, run_status = targets[target_id]
+        target, run_status, contaminated = targets[target_id]
         key = (target["emitted_by"], str(target["attribution"].get("forecast_method_id")),
                target["claim_type"], target["scoring"]["rule"])
         group = groups.setdefault(key, {"raw": [], "base_pairs": [], "deps": set(), "missing": 0,
-                                        "void": 0, "unscored": 0, "excluded": 0})
+                                        "void": 0, "unscored": 0, "excluded": 0, "contaminated": 0})
         status = res["resolution"]["status"]
         if run_status not in ("VALID", "RESOLVED"):
             # An INVALID_PIT (or incomplete) run produces no conclusion, so its
             # forecasts never enter a skill estimate; they stay visible here.
             group["excluded"] += 1
+            continue
+        if contaminated:
+            # A blind run whose packet was recognised (contamination probe or a
+            # fork naming the sealed identity) is recorded, never scored as skill.
+            group["contaminated"] += 1
             continue
         if status == "MISSING":
             group["missing"] += 1
@@ -1424,6 +1464,7 @@ def _scoreboard(ledger: ProjectLedger, resolutions: Mapping[str, dict]) -> dict:
             "emitted_by": key[0], "forecast_method_id": key[1], "claim_type": key[2], "rule": key[3],
             "n_scored": n, "n_independent": independent, "n_missing": group["missing"], "n_void": group["void"],
             "n_resolved_unscored": group["unscored"], "n_excluded_run_status": group["excluded"],
+            "n_excluded_contaminated": group["contaminated"],
             "mean_raw_score": math.fsum(group["raw"]) / n if n else None,
             "n_with_baseline": len(pairs), "mean_baseline_score": mean_base,
             "mean_raw_score_on_baseline_events": mean_raw_paired, "aggregate_skill": skill,
@@ -1442,6 +1483,7 @@ def build_index(ledger: ProjectLedger) -> dict[str, bytes]:
             "run_id": shard.run_id, "file": f"{RUNS_DIRNAME}/{shard.path.name}", "file_sha256": shard.file_sha256,
             "terminal_hash": shard.terminal_hash, "shard_seq": shard.shard_seq, "parents": list(shard.parents),
             "mode": m["mode"], "status": m["status"], "project": m["project"], "decision_id": m["decision_id"],
+            "contamination": (m.get("contamination") or {}).get("status"),
             "run_asof_utc": m["run_asof_utc"], "emitted_utc": m["emitted_utc"], "rows": len(shard.rows),
         })
     for shard, row, record_hash in ledger.rows():
@@ -1454,7 +1496,7 @@ def build_index(ledger: ProjectLedger) -> dict[str, bytes]:
             "id": row["id"], "run_id": row["run_id"], "kind": row["kind"], "claim_type": row["claim_type"],
             "emitted_by": row["emitted_by"], "target_id": row["target_id"], "record_hash": record_hash,
             "first_resolvable_utc": spec.get("first_resolvable_utc"), "state": state,
-            "run_status": shard.manifest["status"],
+            "run_status": shard.manifest["status"], "run_contaminated": is_contaminated(shard.manifest),
         })
         if row["kind"] in FORECAST_KINDS and state == "OPEN":
             open_lines.append({"id": row["id"], "kind": row["kind"], "first_resolvable_utc": spec["first_resolvable_utc"],
@@ -2033,7 +2075,8 @@ def _evidence_lineage(evidence: Mapping[str, Any] | None, evidence_sha: str | No
     graph: dict[str, list[str]] = {}
     ids, stamps, classes = [], [], []
     for item in items:
-        record_id = str(item.get("series_id") or f"price:{item.get('ticker')}@{item.get('event_date')}")
+        ticker = item.get("ticker") or item.get("primary_ticker")
+        record_id = str(item.get("series_id") or f"price:{ticker}@{item.get('event_date')}")
         source = str(item.get("source_id"))
         graph.setdefault(source, []).append(record_id)
         ids.append(record_id)
@@ -2049,7 +2092,8 @@ def _evidence_lineage(evidence: Mapping[str, Any] | None, evidence_sha: str | No
 
 
 def mct_draft(result: Mapping[str, Any], spec: Mapping[str, Any], *,
-              evidence: Mapping[str, Any] | None = None, evidence_sha256: str | None = None) -> dict:
+              evidence: Mapping[str, Any] | None = None, evidence_sha256: str | None = None,
+              run_manifest: Mapping[str, Any] | None = None) -> dict:
     """Draft shard for one actor-simulation result (``pilot_result.json``).
 
     One binary prediction row per terminal outcome (the simulator's
@@ -2058,7 +2102,18 @@ def mct_draft(result: Mapping[str, Any], spec: Mapping[str, Any], *,
     maps to a canonical PIT series. Unmapped leverage nodes stay visible in the
     manifest's ``extensions``. The spec supplies what the simulator cannot:
     the resolving series and bins, the decision link and any market anchor.
+
+    ``run_manifest`` is the extension's run_manifest.json for the same run
+    (ZT add-on): its blind-packet contamination status is carried into the
+    shard manifest (``spec["contamination"]`` overrides it), so a CONTAMINATED
+    run is recorded but never counted toward skill. For a blind run, pass the
+    unblinded packet.json as ``evidence``, not the blind rendering.
     """
+    if evidence is not None and evidence.get("schema") == BLIND_VIEW_SCHEMA:
+        raise SchemaError("evidence is a blind rendering without knowledge times; record the run with "
+                          "the unblinded packet.json named in run_manifest.json blind.unblinded_packet_path")
+    if run_manifest is not None and run_manifest.get("run_id") not in (None, result.get("run_id")):
+        raise SchemaError("run_manifest belongs to another simulator run (run_id differs)")
     probabilities = {str(k): float(v) for k, v in result["ensemble_mc"].items()}
     if abs(math.fsum(probabilities.values()) - 1.0) > scoring.SUM_TO_ONE_TOLERANCE:
         raise SchemaError("ensemble_mc does not sum to 1; terminal outcomes are not exhaustive")
@@ -2188,6 +2243,23 @@ def mct_draft(result: Mapping[str, Any], spec: Mapping[str, Any], *,
         "extensions": {"authority": result.get("authority"), "limitations": result.get("limitations"),
                        "leverage_nodes_unmapped": unmapped},
     }
+    contamination = spec.get("contamination") or (run_manifest or {}).get("contamination")
+    if contamination is not None:
+        if not isinstance(contamination, Mapping):
+            raise SchemaError("contamination must be an object with status and skill_eligible")
+        manifest["contamination"] = {
+            "status": contamination.get("status"),
+            "skill_eligible": contamination.get("skill_eligible"),
+            "source": "spec" if spec.get("contamination") else "run_manifest",
+            "probes": [{k: p.get(k) for k in ("probe_label", "verdict", "hits")}
+                       for p in contamination.get("probes") or []],
+            "forks_with_identity_mentions": sorted(contamination.get("fork_identity_mentions") or {}),
+        }
+        _validate_contamination(manifest["contamination"], "draft run_manifest")
+    blind = (run_manifest or {}).get("blind")
+    if isinstance(blind, Mapping):
+        manifest["extensions"]["blind"] = {key: blind.get(key) for key in (
+            "blind", "mode", "max_age_days", "blind_view_sha256", "sealed_mapping_sha256")}
     if spec.get("vt_manifest", True):
         manifest["vt_run_manifest"] = build_run_manifest(
             run_id=str(result.get("run_id")), timestamp=run_asof, system_prompt=spec.get("system_prompt", ""),
@@ -2276,6 +2348,22 @@ def _load_json(path: str) -> Any:
     return json.loads(Path(path).read_text(encoding="utf-8"))
 
 
+def _run_manifest_for(result_path: str, explicit: str | None, result: Mapping[str, Any]) -> dict | None:
+    """The run's run_manifest.json: explicit, else the sibling of the result when its run_id matches.
+
+    Reading the sibling by default keeps a CONTAMINATED run from being
+    recorded as skill-eligible because a flag was forgotten.
+    """
+    if explicit:
+        return _load_json(explicit)
+    sibling = Path(result_path).with_name("run_manifest.json")
+    if sibling.is_file():
+        manifest = _load_json(str(sibling))
+        if manifest.get("run_id") == result.get("run_id"):
+            return manifest
+    return None
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     """Command-line entry point; prints one JSON document."""
     parser = argparse.ArgumentParser(prog="forecast_ledger", description=__doc__.split("\n")[0])
@@ -2298,7 +2386,9 @@ def main(argv: Sequence[str] | None = None) -> int:
         if name == "record-mct":
             cmd.add_argument("--result", required=True, help="pilot_result.json")
             cmd.add_argument("--spec", required=True, help="record-mct spec JSON")
-            cmd.add_argument("--evidence", help="evidence_snapshot.json")
+            cmd.add_argument("--evidence", help="evidence_snapshot.json, or a packet run's unblinded packet.json")
+            cmd.add_argument("--run-manifest", help="the run's run_manifest.json (default: the one beside "
+                                                    "--result when its run_id matches)")
             cmd.add_argument("--dry-run", action="store_true")
         if name == "resolve-due":
             cmd.add_argument("--asof", help="ISO-8601 cutoff (default: now)")
@@ -2325,8 +2415,10 @@ def main(argv: Sequence[str] | None = None) -> int:
                                 break_stale_lease=args.break_stale_lease)
         elif args.command == "record-mct":
             evidence = _load_json(args.evidence) if args.evidence else None
-            draft = mct_draft(_load_json(args.result), _load_json(args.spec), evidence=evidence,
-                              evidence_sha256=sha256_file(Path(args.evidence)) if args.evidence else None)
+            result = _load_json(args.result)
+            draft = mct_draft(result, _load_json(args.spec), evidence=evidence,
+                              evidence_sha256=sha256_file(Path(args.evidence)) if args.evidence else None,
+                              run_manifest=_run_manifest_for(args.result, args.run_manifest, result))
             if args.dry_run:
                 out = {"dry_run": True, "draft": draft}
             else:
