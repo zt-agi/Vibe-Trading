@@ -173,7 +173,12 @@ export function ZtDashboards() {
   );
 
   useEffect(() => {
-    if (viewer) viewerRef.current?.scrollIntoView?.({ behavior: "smooth", block: "start" });
+    if (viewer) {
+      // Move focus off the report-list button before its new preceding content
+      // changes scroll anchoring, then reveal the committed viewer immediately.
+      viewerRef.current?.focus({ preventScroll: true });
+      viewerRef.current?.scrollIntoView?.({ behavior: "instant", block: "start" });
+    }
   }, [viewer?.item.id, viewer?.src]);
 
   const closeReport = useCallback(() => {
@@ -283,7 +288,7 @@ export function ZtDashboards() {
         <PreflightPanel tz={tz} report={preflight} error={preflightError} loading={loading && !preflight} />
 
         {viewer ? (
-          <section ref={viewerRef} aria-label={tz("viewer", "Report viewer")} className="space-y-3">
+          <section ref={viewerRef} tabIndex={-1} aria-label={tz("viewer", "Report viewer")} className="space-y-3">
             <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
               <div className="min-w-0">
                 <h2 className="truncate text-lg font-semibold">{viewer.item.title}</h2>

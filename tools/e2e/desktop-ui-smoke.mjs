@@ -149,9 +149,11 @@ async function captureLifecycle() {
     const manager = process.mainModule.require(args.module);
     const fs = process.mainModule.require("node:fs");
     const { BrowserWindow } = process.mainModule.require("electron");
-    for (const window of BrowserWindow.getAllWindows()) window.webContents.on("before-input-event", (_event, input) => {
-      if (input.key?.startsWith("Arrow")) fs.appendFileSync(args.inputEvidence, JSON.stringify({ at: new Date().toISOString(), type: input.type, key: input.key, code: input.code, alt: input.alt, control: input.control, meta: input.meta, shift: input.shift }) + "\n");
+    const watchInput = window => window.webContents.on("before-input-event", (_event, input) => {
+      if (input.alt || input.key?.startsWith("Arrow")) fs.appendFileSync(args.inputEvidence, JSON.stringify({ at: new Date().toISOString(), type: input.type, key: input.key, code: input.code, alt: input.alt, control: input.control, meta: input.meta, shift: input.shift }) + "\n");
     });
+    for (const window of BrowserWindow.getAllWindows()) watchInput(window);
+    app.on("browser-window-created", (_event, window) => watchInput(window));
     const original = manager.BackendManager.prototype.stop;
     manager.BackendManager.prototype.stop = async function (...params) {
       const result = await original.apply(this, params);
@@ -301,7 +303,13 @@ try {
     const viewer = page.getByRole("region", { name: "Report viewer", exact: true });
     await viewer.waitFor();
     const iframe = viewer.locator("iframe"); await iframe.waitFor();
-    await poll(async () => { const box = await viewer.boundingBox(); return box && box.y >= 0 && box.y + 44 < (await page.evaluate(() => innerHeight)); });
+    receipt.report_reveal_evidence = {};
+    await poll(async () => {
+      const box = await viewer.boundingBox();
+      const viewport = await page.evaluate(() => ({ height: innerHeight, scroll: document.querySelector("main")?.scrollTop, windowScroll: scrollY }));
+      receipt.report_reveal_evidence.initial = { box, viewport };
+      return box && box.y >= -1 && box.y + 44 < viewport.height;
+    });
     const initialReveal = { viewer: await viewer.boundingBox(), main: await page.evaluate(() => ({ url: location.href, scroll: document.querySelector("main")?.scrollTop, windowScroll: scrollY })) };
     const frame = await iframe.elementHandle().then(handle => handle.contentFrame());
     assert.ok(frame, "real report frame must exist");
@@ -326,23 +334,38 @@ try {
   });
   await check("ordinary-back-forward-navigation", async () => {
     await page.locator('a[href="/"]').first().click();
-    const snapshot = async () => ({ renderer: await page.evaluate(() => ({ url: location.href, active: document.activeElement?.outerHTML?.slice(0, 500) })), main: await app.evaluate(({ BrowserWindow }) => { const contents = BrowserWindow.getAllWindows()[0].webContents; return { url: contents.getURL(), entries: contents.navigationHistory.getAllEntries(), index: contents.navigationHistory.getActiveIndex() }; }) });
+    const snapshot = async () => JSON.parse(redact(JSON.stringify({
+      renderer: await page.evaluate(() => ({ url: location.href, active: document.activeElement?.tagName })),
+      main: await app.evaluate(({ BrowserWindow }) => {
+        const contents = BrowserWindow.getAllWindows()[0].webContents;
+        return { url: contents.getURL(), entries: contents.navigationHistory.getAllEntries().map(({ url, title }) => ({ url, title })), index: contents.navigationHistory.getActiveIndex() };
+      }),
+    })));
+    const nativeArrow = async keyCode => app.evaluate(({ BrowserWindow }, keyCode) => {
+      const window = BrowserWindow.getAllWindows()[0];
+      window.focus(); window.webContents.focus();
+      window.webContents.sendInputEvent({ type: "keyDown", keyCode, modifiers: ["alt"] });
+      window.webContents.sendInputEvent({ type: "keyUp", keyCode, modifiers: ["alt"] });
+    }, keyCode);
     const before = await snapshot();
-    const historyEvidence = { before };
+    const historyEvidence = { before, input_method: "Electron webContents.sendInputEvent with Alt and arrow keys" };
     receipt.navigation_evidence = historyEvidence;
     try {
-    await page.keyboard.press("Alt+ArrowLeft");
+    await nativeArrow("Left");
     historyEvidence.afterBackInput = await snapshot();
     await poll(async () => new URL(page.url()).pathname === "/zt", 15000);
     await page.getByRole("heading", { name: "ZT research dashboards", exact: true }).waitFor({ timeout: 15000 });
     const afterBack = await snapshot();
-    await page.keyboard.press("Alt+ArrowRight");
+    await nativeArrow("Right");
     historyEvidence.afterForwardInput = await snapshot();
     await poll(async () => new URL(page.url()).pathname === "/", 15000);
     await page.locator("textarea").first().waitFor({ timeout: 15000 });
     const afterForward = await snapshot();
     const input = await readFile(keyEvidencePath, "utf8").catch(() => "");
-    return { back: "/zt", forward: "/", before, afterBack, afterForward, arrow_inputs: input.trim().split("\n").filter(Boolean).map(JSON.parse) };
+    const arrows = input.trim().split("\n").filter(Boolean).map(JSON.parse);
+    assert.ok(arrows.some(row => row.alt && row.type === "keyDown" && row.key === "ArrowLeft"));
+    assert.ok(arrows.some(row => row.alt && row.type === "keyDown" && row.key === "ArrowRight"));
+    return { back: "/zt", forward: "/", before, afterBack, afterForward, arrow_inputs: arrows };
     } finally {
       historyEvidence.final = await snapshot();
       const input = await readFile(keyEvidencePath, "utf8").catch(() => "");
@@ -364,7 +387,7 @@ try {
   });
   if (process.env.VT_DESKTOP_PROMPT_SMOKE === "1") {
     await check("real-ollama-prompt-through-desktop", async () => {
-      await check("preflight-phase-cleanup", cleanup);
+      assert.ok(await check("preflight-phase-cleanup", cleanup), "prior owned desktop must close before model phase");
       await app.close().catch(() => undefined); app = undefined;
       qaHome = path.join(runRoot, "no-tools-home"); profile = path.join(runRoot, "no-tools-profile");
       await prepareHome(qaHome, profile, false);
@@ -384,6 +407,8 @@ try {
       await page.locator('a[href="/"]').first().click();
       const input = page.locator("textarea").first();
       await input.fill("Desktop QA only. Do not call any tools, read or write any files, make predictions, or place orders. Reply with exactly: VT_DESKTOP_QA_OK");
+      const titleResponse = page.waitForResponse(response => /^\/sessions\/[^/]+\/title\/auto$/.test(new URL(response.url()).pathname), { timeout: 90000 });
+      titleResponse.catch(() => undefined);
       await input.press("Enter");
       await poll(async () => {
         const text = await page.locator("main").innerText();
@@ -398,6 +423,8 @@ try {
       const messages = await page.evaluate(async sid => { const response = await fetch(`/sessions/${sid}/messages`); if (!response.ok) throw new Error(`messages HTTP ${response.status}`); return response.json(); }, sessions[0].session_id);
       assert.ok(Array.isArray(messages), "real message list required");
       assert.ok(messages.some(message => message.role === "assistant" && message.content.trim() === "VT_DESKTOP_QA_OK"), "completed assistant response required");
+      const completedTitle = await titleResponse;
+      assert.equal(completedTitle.status(), 200, "automatic title request must finish before desktop cleanup");
       const trails = messages.flatMap(message => message.tool_trail ?? []);
       assert.equal(trails.length, 0, "prompt produced tool events");
       await screenshot("ollama-response");
