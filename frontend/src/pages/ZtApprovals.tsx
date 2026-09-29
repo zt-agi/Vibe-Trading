@@ -118,7 +118,7 @@ function Countdown({ expiresUtc, now, tz }: { expiresUtc: string; now: number; t
 
 function Card({ title, children, className }: { title: string; children: ReactNode; className?: string }) {
   return (
-    <section className={cn("rounded-md border bg-card p-4", className)}>
+    <section className={cn("min-w-0 rounded-md border bg-card p-4", className)}>
       <h3 className="mb-3 text-sm font-semibold">{title}</h3>
       {children}
     </section>
@@ -255,8 +255,8 @@ export function ZtApprovals() {
           </p>
         ) : null}
 
-        <div className="grid gap-6 lg:grid-cols-12">
-          <section aria-labelledby="zt-approvals-list" className="space-y-3 lg:col-span-5">
+        <div className="grid grid-cols-1 gap-6 lg:grid-cols-12">
+          <section aria-labelledby="zt-approvals-list" className="min-w-0 space-y-3 lg:col-span-5">
             <div className="flex items-end justify-between gap-2">
               <h2 id="zt-approvals-list" className="text-lg font-semibold">
                 {tz("proposals", "Proposals")}
@@ -288,7 +288,7 @@ export function ZtApprovals() {
             />
           </section>
 
-          <section aria-label={tz("detailLabel", "Proposal detail")} className="lg:col-span-7">
+          <section aria-label={tz("detailLabel", "Proposal detail")} className="min-w-0 lg:col-span-7">
             {selectedId ? (
               detailError ? (
                 <p role="alert" className="rounded-md border border-danger/40 bg-danger/10 px-3 py-2 text-sm">
@@ -505,7 +505,7 @@ function ProposalDetailView({
       <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
         <div className="min-w-0 space-y-1">
           <div className="flex flex-wrap items-center gap-2">
-            <h2 className="font-mono text-sm font-semibold">{proposal.id}</h2>
+            <h2 className="break-all font-mono text-sm font-semibold">{proposal.id}</h2>
             <StatusChip status={proposal.status} tz={tz} />
             {proposal.status === "PENDING" ? <Countdown expiresUtc={proposal.expires_utc} now={now} tz={tz} /> : null}
           </div>
