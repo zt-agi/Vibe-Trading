@@ -67,7 +67,7 @@ def ctx(pf, tmp_path):
                       windows=False)
 
 
-def fake_ollama(models=("gpt-oss:20b", "qwen3:14b"), context=32768, fail=False, calls=None):
+def fake_ollama(models=("gpt-oss:20b", "qwen3:14b"), context=65536, fail=False, calls=None):
     def get(url, timeout):
         if calls is not None:
             calls.append((url, timeout))
@@ -140,11 +140,23 @@ def test_ollama_active_and_ready(pf, ctx):
     ctx.http_get = fake_ollama(calls=calls)
     check = pf.check_ollama(ctx)
     assert check.status == "OK", check.summary
-    assert "32768-token context" in check.summary
+    assert "65536-token context" in check.summary
+    assert check.detail["token_threshold_budget"] == 65536 - 30000 - 6000
     assert {url for url, _ in calls} == {"http://localhost:11434/api/version",
                                          "http://localhost:11434/api/tags",
                                          "http://localhost:11434/api/ps"}
     assert all(timeout <= 2 for _, timeout in calls)
+
+
+def test_ollama_budget_follows_the_model_family(pf, ctx):
+    # qwen3's template renders the tools as JSON (~35k tokens for VT's local tools).
+    ctx.settings["model"] = "qwen3:14b"
+    ctx.http_get = fake_ollama(models=("qwen3:14b", "gpt-oss:20b"))
+    check = pf.check_ollama(ctx)
+    assert check.status == "WARN" and "TOKEN_THRESHOLD=24000" in check.summary
+    assert "Set TOKEN_THRESHOLD=19000" in check.fix
+    ctx.settings["token_threshold"] = 19000
+    assert pf.check_ollama(ctx).status == "OK"
 
 
 def test_ollama_base_url_is_normalized(pf, ctx):
@@ -159,8 +171,10 @@ def test_ollama_base_url_is_normalized(pf, ctx):
     ({"models": ("qwen3:14b",)}, 24000, "FAIL", "not pulled"),
     ({"fail": True}, 24000, "FAIL", "Not reachable"),
     ({"context": 4096}, 24000, "WARN", "4096-token context"),
+    # 32k cannot hold VT's tool schemas and system prompt (measured ~36k for gpt-oss).
+    ({"context": 32768}, 24000, "WARN", "32768-token context"),
     ({}, 40000, "WARN", "TOKEN_THRESHOLD=40000"),
-    ({"context": None}, 40000, "WARN", "32768-token context"),
+    ({"context": None}, 40000, "WARN", "65536-token context"),
 ])
 def test_ollama_problems(pf, ctx, kwargs, threshold, status, needle):
     ctx.http_get = fake_ollama(**kwargs)

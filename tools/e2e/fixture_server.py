@@ -62,7 +62,7 @@ class FakeOllama(BaseHTTPRequestHandler):
         elif self.path == "/api/tags":
             body = {"models": [{"name": name, "model": name} for name in MODELS]}
         elif self.path == "/api/ps":
-            body = {"models": [{"name": MODELS[0], "model": MODELS[0], "context_length": 32768}]}
+            body = {"models": [{"name": MODELS[0], "model": MODELS[0], "context_length": 65536}]}
         else:
             self.send_error(404)
             return
@@ -134,7 +134,7 @@ def build_runtime(base: Path, key: str, project: Path, ollama_port: int) -> dict
         "LANGCHAIN_PROVIDER=ollama",
         "LANGCHAIN_MODEL_NAME=gpt-oss:20b",
         f"OLLAMA_BASE_URL=http://127.0.0.1:{ollama_port}",
-        "TOKEN_THRESHOLD=24000",
+        "TOKEN_THRESHOLD=28000",
         "TIMEOUT_SECONDS=600",
         "VIBE_ORDER_APPROVAL=required",
         f"VIBE_TRADING_PLAYBOOK_DIR='{PLAYBOOKS}'",

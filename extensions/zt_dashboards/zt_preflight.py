@@ -41,7 +41,16 @@ _RANK = {OK: 0, WARN: 1, FAIL: 2}
 
 SUBSCRIPTION_PROVIDERS = ("ollama", "openai-codex")
 DEFAULT_OLLAMA_URL = "http://localhost:11434"
-EXPECTED_OLLAMA_CONTEXT = 32768      # bin\start_ollama.ps1 sets OLLAMA_CONTEXT_LENGTH
+EXPECTED_OLLAMA_CONTEXT = 65536      # bin\start_ollama.ps1 sets OLLAMA_CONTEXT_LENGTH
+# VT sends every tool schema on every call and TOKEN_THRESHOLD (its auto-compaction
+# trigger) counts only the messages. Measured 2026-09-29 with o200k: 107 local tools
+# = 35.2k tokens as JSON, 24.4k in gpt-oss's Harmony rendering; the system prompt is
+# 11.9k (inside the messages). The budgets add the ZT MCP tools and leave room for the
+# reply (reasoning included), so TOKEN_THRESHOLD <= context - tools - reply.
+TOOL_TOKENS = {"gpt-oss": 30000}
+TOOL_TOKENS_DEFAULT = 40000          # models whose template renders tools as JSON
+REPLY_RESERVE = 6000
+MIN_OLLAMA_CONTEXT = 49152
 OLLAMA_TIMEOUT_S = 1.5
 AUDIT_MAX_AGE = timedelta(hours=1)   # pit-actor-sim simulation gate
 INDEX_MAX_AGE = timedelta(hours=36)
@@ -293,7 +302,7 @@ def check_ollama(ctx: Context) -> Check:
     base = ctx.environ.get("OLLAMA_BASE_URL") or ctx.dotenv.get("OLLAMA_BASE_URL") or DEFAULT_OLLAMA_URL
     root = ollama_root(base)
     detail: dict[str, Any] = {"base_url": root, "active_provider": active, "model": model}
-    start = ("Start it with bin\\start_ollama.ps1 (models on E:\\OllamaModels, 32k context) and "
+    start = ("Start it with bin\\start_ollama.ps1 (models on E:\\OllamaModels, 64k context) and "
              "register the logon task once with bin\\register_ollama_logon_task.ps1.")
     if not _is_loopback(root):
         return Check("llm.ollama", "Ollama", WARN if active else OK,
@@ -333,18 +342,26 @@ def check_ollama(ctx: Context) -> Check:
                      "it and run bin\\start_ollama.ps1 -Restart.", detail)
     threshold = int(ctx.settings.get("token_threshold") or 0)
     window = int(context_length or EXPECTED_OLLAMA_CONTEXT)
+    tools = next((n for family, n in TOOL_TOKENS.items() if model.lower().startswith(family)),
+                 TOOL_TOKENS_DEFAULT)
+    budget = window - tools - REPLY_RESERVE
     detail.update(token_threshold=threshold, context_window_checked=window,
-                  context_basis="loaded model" if context_length else "expected OLLAMA_CONTEXT_LENGTH")
-    if context_length and int(context_length) < 16384:
+                  context_basis="loaded model" if context_length else "expected OLLAMA_CONTEXT_LENGTH",
+                  tool_schema_tokens_assumed=tools, token_threshold_budget=budget)
+    overflow = ("Ollama silently drops the start of an overlong prompt, which holds VT's system prompt "
+                "and tool schemas, and the agent then misbehaves without an error.")
+    if context_length and int(context_length) < MIN_OLLAMA_CONTEXT:
         return Check("llm.ollama", "Ollama", WARN,
-                     f"{model} is loaded with a {context_length}-token context; VT's prompts need more.",
-                     "Restart Ollama with bin\\start_ollama.ps1 -Restart (sets OLLAMA_CONTEXT_LENGTH=32768).",
-                     detail)
-    if threshold > int(window * 0.8):
+                     f"{model} is loaded with a {context_length}-token context; VT's tool schemas and "
+                     f"system prompt alone take about {tools + 12000} tokens.",
+                     "Restart Ollama with bin\\start_ollama.ps1 -Restart (OLLAMA_CONTEXT_LENGTH=65536). "
+                     + overflow, detail)
+    if threshold > budget:
         return Check("llm.ollama", "Ollama", WARN,
-                     f"TOKEN_THRESHOLD={threshold} lets the transcript outgrow the {window}-token context.",
-                     "Set TOKEN_THRESHOLD=24000 in home\\.env (Ollama silently drops the oldest tokens, "
-                     "system prompt included, once the context is full). " + FIX_RESTART, detail)
+                     f"TOKEN_THRESHOLD={threshold} lets the transcript outgrow the {window}-token context "
+                     f"(budget {budget} after ~{tools} tokens of tool schemas and the reply).",
+                     f"Set TOKEN_THRESHOLD={max(8000, budget // 1000 * 1000)} in home\\.env "
+                     "(bin\\set_llm_default.ps1 does). " + overflow + " " + FIX_RESTART, detail)
     return Check("llm.ollama", "Ollama", OK,
                  f"Reachable (v{detail['version']}), {model} present"
                  + (f", loaded with {context_length}-token context." if context_length else "."),
