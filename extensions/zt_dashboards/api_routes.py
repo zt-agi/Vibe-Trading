@@ -1,10 +1,11 @@
 """ZT add-on: Web UI routes for ZT's read-only research dashboards.
 
-``register(app)`` adds three GET routes to VT's FastAPI app:
+``register(app)`` adds four GET routes to VT's FastAPI app:
 
     /zt/reports                 whitelisted report list        (require_auth)
     /zt/reports/{report_id}     one whitelisted HTML report    (require_event_stream_auth)
     /zt/snapshot/{date}         daily_snapshot envelope        (require_auth)
+    /zt/preflight               operator pre-flight checks     (require_auth)
 
 Authentication reuses VT's own dependencies. The report route uses the event
 stream variant because a browser iframe, like EventSource, cannot send an
@@ -22,26 +23,37 @@ from pathlib import Path
 from typing import Any
 
 from fastapi import Depends, HTTPException, Request
-from fastapi.responses import Response
+from fastapi.responses import JSONResponse, Response
 from starlette.routing import Mount
 
 _HERE = Path(__file__).resolve().parent
 _CORE_MODULE = "zt_dashboards_core"
+_PREFLIGHT_MODULE = "zt_dashboards_preflight"
 
-ROUTE_PATHS = ("/zt/reports", "/zt/reports/{report_id:path}", "/zt/snapshot/{date}")
+ROUTE_PATHS = ("/zt/reports", "/zt/reports/{report_id:path}", "/zt/snapshot/{date}",
+               "/zt/preflight")
 
 
-def _load_core():
-    module = sys.modules.get(_CORE_MODULE)
+def _load(name: str, filename: str):
+    module = sys.modules.get(name)
     if module is None:
-        spec = importlib.util.spec_from_file_location(_CORE_MODULE, _HERE / "zt_core.py")
+        spec = importlib.util.spec_from_file_location(name, _HERE / filename)
         module = importlib.util.module_from_spec(spec)
-        sys.modules[_CORE_MODULE] = module
-        spec.loader.exec_module(module)
+        sys.modules[name] = module
+        try:
+            spec.loader.exec_module(module)
+        except BaseException:
+            sys.modules.pop(name, None)
+            raise
     return module
 
 
+def _load_core():
+    return _load(_CORE_MODULE, "zt_core.py")
+
+
 core = _load_core()
+preflight = _load(_PREFLIGHT_MODULE, "zt_preflight.py")
 
 
 def _unavailable(exc: Exception) -> HTTPException:
@@ -83,6 +95,12 @@ def get_zt_snapshot(date: str) -> Any:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
+def get_zt_preflight(request: Request) -> Any:
+    """Operator pre-flight: OK / WARN / FAIL per check, with how to fix; no secrets."""
+    payload = preflight.run_preflight(app_state=getattr(request.app, "state", None))
+    return JSONResponse(payload, headers={"Cache-Control": "no-store"})
+
+
 def _is_catch_all(route: Any) -> bool:
     return isinstance(route, Mount) and getattr(route, "path", None) in ("", "/")
 
@@ -100,7 +118,8 @@ def register(app: Any) -> list:
     for path, endpoint, dependency in (
             (ROUTE_PATHS[0], list_zt_reports, require_auth),
             (ROUTE_PATHS[1], get_zt_report, require_event_stream_auth),
-            (ROUTE_PATHS[2], get_zt_snapshot, require_auth)):
+            (ROUTE_PATHS[2], get_zt_snapshot, require_auth),
+            (ROUTE_PATHS[3], get_zt_preflight, require_auth)):
         app.add_api_route(path, endpoint, methods=["GET"], dependencies=[Depends(dependency)],
                           response_model=None, tags=["zt-dashboards"],
                           name=f"zt_dashboards_{endpoint.__name__}")
