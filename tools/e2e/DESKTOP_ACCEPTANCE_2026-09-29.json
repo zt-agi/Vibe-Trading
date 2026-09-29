@@ -1,401 +1,157 @@
 {
-  "schema": "vt-desktop-ui-acceptance-qualified/1",
-  "status": "NOT_ACCEPTANCE_TESTED_OPEN_ROWS",
-  "reported_at": "2026-09-29T15:50:26.2362683Z",
-  "implementation_status": "DONE_WITH_CONCERNS",
-  "source_commit": "3e6306a99874d614a896a5999d606349179bed70",
+  "schema": "vt-desktop-acceptance/2",
+  "status": "PASS_PC1_USER_TEST_READY",
+  "workorder_status": "OPEN_CONTAINER_GATE",
+  "reported_at_utc": "2026-09-29T16:57:42.571812+00:00",
+  "source_branch": "feature/pit-actor-sim",
+  "tested_source_commit": "6ae78f54c18097a16e9019977b30c845b713a021",
+  "runtime_sync_at_local": "2026-09-29T12:45:51.6306687-04:00",
   "actual_surface": "actual Electron BrowserWindow and preload bridge",
-  "test_command": "execution_guard.py run --name desktop-native-ui-1146 --cwd E:\\codex-runtime\\investment-ai\\vibe-trading --timeout 480 --heartbeat 10 -- node.exe <canonical-G-source>\\tools\\e2e\\desktop-ui-smoke.mjs",
-  "raw_results": "E:\\codex-runtime\\investment-ai\\vibe-trading\\logs\\desktop-ui-20260929_1146\\results.json",
-  "guard_receipt": "E:\\codex-runtime\\investment-ai\\vibe-trading\\logs\\execution_guard\\desktop-native-ui-1146-21219e73ec68\\state.json",
-  "raw_counts": {
-    "PASS": 10,
-    "FAIL": 3,
+  "native_counts": {
+    "PASS": 14,
+    "FAIL": 0,
     "UNRUN": 0
   },
-  "rows": [
+  "native_rows": [
     {
       "id": "native-launch-and-first-content",
-      "status": "PASS",
-      "milliseconds": 24226,
-      "evidence": {
-        "mainPid": 37072,
-        "logsPath": "E:\\codex-runtime\\investment-ai\\vibe-trading\\logs\\desktop-ui-20260929_1146\\userData\\logs",
-        "language": "en-US",
-        "bridge": true,
-        "first_content": "Morning — ready when you are.\n\nAsk about a stock, a strategy, or your portfolio — I'll pull the data, run the numbers, and show every step.\n\nCheck if a stock is expensive\nOptions risk check (Greeks)\nBalance a 3-stock portfolio\nBuy or sell? Let a comm"
-      }
+      "status": "PASS"
     },
     {
       "id": "navigation-to-zt-and-preflight",
-      "status": "PASS",
-      "milliseconds": 962,
-      "evidence": {
-        "counts": "13 OK · 2 WARN · 0 FAIL",
-        "path": "/zt"
-      }
+      "status": "PASS"
     },
     {
       "id": "preflight-expand-collapse-and-detail",
-      "status": "PASS",
-      "milliseconds": 83,
-      "evidence": {
-        "row_count": 15,
-        "detail_mouse_and_keyboard": true,
-        "toggle_keyboard": true
-      }
+      "status": "PASS"
     },
     {
       "id": "snapshot-select-and-refresh",
-      "status": "PASS",
-      "milliseconds": 386,
-      "evidence": {
-        "selected": "today",
-        "refreshed": true
-      }
+      "status": "PASS"
     },
     {
       "id": "native-width-1280-scroll-and-overflow",
-      "status": "PASS",
-      "milliseconds": 3089,
-      "evidence": {
-        "dimensions": {
-          "width": 1264,
-          "document": {
-            "client": 1264,
-            "scroll": 1264
-          },
-          "main": {
-            "client": 1002,
-            "scroll": 1002
-          }
-        },
-        "wheelDown": {
-          "before": {
-            "top": 0,
-            "height": 6197,
-            "viewport": 781
-          },
-          "after": {
-            "top": 5416,
-            "height": 6197,
-            "viewport": 781
-          }
-        },
-        "wheelUp": {
-          "before": {
-            "top": 5416,
-            "height": 6197,
-            "viewport": 781
-          },
-          "after": {
-            "top": 0,
-            "height": 6197,
-            "viewport": 781
-          }
-        },
-        "pageDown": {
-          "before": {
-            "top": 0,
-            "height": 6197,
-            "viewport": 781
-          },
-          "after": {
-            "top": 5416,
-            "height": 6197,
-            "viewport": 781
-          }
-        },
-        "pageUp": {
-          "before": {
-            "top": 5416,
-            "height": 6197,
-            "viewport": 781
-          },
-          "after": {
-            "top": 0,
-            "height": 6197,
-            "viewport": 781
-          }
-        }
-      }
+      "status": "PASS"
     },
     {
       "id": "native-width-1024-scroll-and-overflow",
-      "status": "PASS",
-      "milliseconds": 3127,
-      "evidence": {
-        "dimensions": {
-          "width": 1008,
-          "document": {
-            "client": 1008,
-            "scroll": 1008
-          },
-          "main": {
-            "client": 746,
-            "scroll": 746
-          }
-        },
-        "wheelDown": {
-          "before": {
-            "top": 0,
-            "height": 6631,
-            "viewport": 781
-          },
-          "after": {
-            "top": 5850,
-            "height": 6631,
-            "viewport": 781
-          }
-        },
-        "wheelUp": {
-          "before": {
-            "top": 5850,
-            "height": 6631,
-            "viewport": 781
-          },
-          "after": {
-            "top": 0,
-            "height": 6631,
-            "viewport": 781
-          }
-        },
-        "pageDown": {
-          "before": {
-            "top": 0,
-            "height": 6631,
-            "viewport": 781
-          },
-          "after": {
-            "top": 5850,
-            "height": 6631,
-            "viewport": 781
-          }
-        },
-        "pageUp": {
-          "before": {
-            "top": 5850,
-            "height": 6631,
-            "viewport": 781
-          },
-          "after": {
-            "top": 0,
-            "height": 6631,
-            "viewport": 781
-          }
-        }
-      }
+      "status": "PASS"
     },
     {
       "id": "native-width-960-scroll-and-overflow",
-      "status": "PASS",
-      "milliseconds": 3242,
-      "evidence": {
-        "dimensions": {
-          "width": 944,
-          "document": {
-            "client": 944,
-            "scroll": 944
-          },
-          "main": {
-            "client": 682,
-            "scroll": 682
-          }
-        },
-        "wheelDown": {
-          "before": {
-            "top": 0,
-            "height": 6816,
-            "viewport": 781
-          },
-          "after": {
-            "top": 6035,
-            "height": 6816,
-            "viewport": 781
-          }
-        },
-        "wheelUp": {
-          "before": {
-            "top": 6035,
-            "height": 6816,
-            "viewport": 781
-          },
-          "after": {
-            "top": 0,
-            "height": 6816,
-            "viewport": 781
-          }
-        },
-        "pageDown": {
-          "before": {
-            "top": 0,
-            "height": 6816,
-            "viewport": 781
-          },
-          "after": {
-            "top": 6035,
-            "height": 6816,
-            "viewport": 781
-          }
-        },
-        "pageUp": {
-          "before": {
-            "top": 6035,
-            "height": 6816,
-            "viewport": 781
-          },
-          "after": {
-            "top": 0,
-            "height": 6816,
-            "viewport": 781
-          }
-        }
-      }
+      "status": "PASS"
     },
     {
       "id": "real-report-frame-and-desktop-controls",
-      "status": "PASS",
-      "milliseconds": 1202,
-      "evidence": {
-        "report": "Open Alpha Monitor Top 25",
-        "control_count": 5,
-        "detail_control_exercised": false,
-        "reload_deep_link": true,
-        "closed": true
-      }
+      "status": "PASS"
     },
     {
       "id": "ordinary-back-forward-navigation",
-      "status": "FAIL",
-      "milliseconds": 5071,
-      "error": "page.waitForURL: Timeout 5000ms exceeded.\n=========================== logs ===========================\nwaiting for navigation until \"load\"\n============================================================"
-    },
-    {
-      "id": "real-ollama-prompt-through-desktop",
-      "status": "PASS",
-      "milliseconds": 54680,
-      "evidence": {
-        "marker": "VT_DESKTOP_QA_OK",
-        "provider": "ollama",
-        "model": "gpt-oss:20b",
-        "session_location": "E:\\codex-runtime\\investment-ai\\vibe-trading\\logs\\desktop-ui-20260929_1146\\qa-home",
-        "tools_requested": false
-      }
+      "status": "PASS"
     },
     {
       "id": "desktop-renderer-bridge-backend-recovery",
-      "status": "FAIL",
-      "milliseconds": 303,
-      "error": "page.evaluate: Execution context was destroyed, most likely because of a navigation."
+      "status": "PASS"
+    },
+    {
+      "id": "preflight-phase-cleanup",
+      "status": "PASS"
+    },
+    {
+      "id": "real-ollama-prompt-through-desktop",
+      "status": "PASS"
     },
     {
       "id": "close-window-and-owned-backend-cleanup",
-      "status": "PASS",
-      "milliseconds": 162,
-      "evidence": {
-        "mainPid": 37072,
-        "main_exited": true,
-        "backendPids": [
-          39004
-        ],
-        "listeners_closed": 1
-      }
+      "status": "PASS"
     },
     {
       "id": "clean-renderer-console",
-      "status": "FAIL",
-      "evidence": {
-        "page_errors": 0,
-        "console_errors": 6
-      }
+      "status": "PASS"
     }
   ],
-  "page_errors": [],
-  "console_errors": [
-    "Failed to load resource: the server responded with a status of 404 (Not Found)",
-    "Failed to load resource: net::ERR_CONNECTION_RESET",
-    "Failed to load resource: net::ERR_CONNECTION_RESET",
-    "Failed to load resource: the server responded with a status of 404 (Not Found)",
-    "Failed to load resource: net::ERR_CONNECTION_RESET",
-    "Failed to load resource: net::ERR_CONNECTION_RESET"
-  ],
-  "screenshots": [
-    "E:\\codex-runtime\\investment-ai\\vibe-trading\\logs\\desktop-ui-20260929_1146\\screenshots\\first-content.png",
-    "E:\\codex-runtime\\investment-ai\\vibe-trading\\logs\\desktop-ui-20260929_1146\\screenshots\\zt-preflight.png",
-    "E:\\codex-runtime\\investment-ai\\vibe-trading\\logs\\desktop-ui-20260929_1146\\screenshots\\zt-width-1280.png",
-    "E:\\codex-runtime\\investment-ai\\vibe-trading\\logs\\desktop-ui-20260929_1146\\screenshots\\zt-width-1024.png",
-    "E:\\codex-runtime\\investment-ai\\vibe-trading\\logs\\desktop-ui-20260929_1146\\screenshots\\zt-width-960.png",
-    "E:\\codex-runtime\\investment-ai\\vibe-trading\\logs\\desktop-ui-20260929_1146\\screenshots\\report-frame.png",
-    "E:\\codex-runtime\\investment-ai\\vibe-trading\\logs\\desktop-ui-20260929_1146\\screenshots\\ollama-response.png"
-  ],
-  "interpretation": [
-    "Actual Electron launch, English first content, preload bridge, /zt navigation, preflight, detail expansion, snapshot selection, refresh, report iframe loading/reload/Close, ordinary wheel/PageDown/PageUp at 1280/1024/960 native window widths, and close-owned-listener cleanup were observed.",
-    "The report row proves content loading and outer viewer controls only. No report-internal core control was exercised: the selected report had five controls but no summary. Its screenshot shows the snapshot pane during smooth scroll rather than the report frame. Report core-control and final visual acceptance remain open.",
-    "Alt+Left did not navigate back in the actual desktop window within five seconds. Forward navigation was not reached. This is an observed user-path failure.",
-    "restartBackend() navigates away from its invoking renderer, destroying the awaited evaluation context. The raw recovery FAIL is a harness failure; this run does not establish whether product recovery itself failed.",
-    "Six resource console errors lack URL attribution. Two 404s and four ERR_CONNECTION_RESET remain unresolved; zero uncaught page errors were observed.",
-    "The optional Ollama prompt returned the exact marker in 54.465 seconds and the isolated saved session contains no tool calls. However the QA agent configuration copied production MCP servers, so prompt-only instructions did not enforce tool isolation. Invalidate the safe-isolation acceptance claim; do not repeat until QA tools are technically unavailable."
-  ],
-  "prompt_observation": {
-    "acceptance": "INVALIDATED_TECHNICAL_TOOL_ISOLATION_NOT_ENFORCED",
+  "real_local_model": {
     "provider": "ollama",
-    "model": "gpt-oss:20b",
-    "session_id": "115e6cdecf17",
-    "session_root": "E:\\codex-runtime\\investment-ai\\vibe-trading\\logs\\desktop-ui-20260929_1146\\qa-home\\sessions\\115e6cdecf17",
-    "assistant_status": "completed",
-    "elapsed_ms": 54465,
-    "exact_marker": true,
-    "observed_tool_event_count": 0,
-    "observed_tool_trail_count": 0,
-    "mcp_initialized": true,
-    "user_existing_sessions_imported": false,
-    "cancellation": "Completed and app closed before cancellation could attach; no second prompt sent."
+    "model_tested": "vt-qa-gpt-oss-context8192:latest",
+    "production_alias": "vt-gpt-oss-ctx8192:latest",
+    "context": 8192,
+    "tools_available": 0,
+    "tool_events": 0,
+    "proof": "Fresh isolated desktop phase with empty tool registry and real response marker"
   },
+  "web_strict": {
+    "passed": 121,
+    "failed": 0,
+    "widths": [
+      1680,
+      1366,
+      1024,
+      800,
+      500,
+      390
+    ],
+    "emulated_desktop_included": true,
+    "actual_native_separately_tested": true
+  },
+  "paper_approval": {
+    "passed": 3,
+    "failed": 0,
+    "prices": "synthetic test fixture only",
+    "checks": [
+      "one fill with human approval; repeat refused",
+      "reason-gated rejection",
+      "expired approval refused"
+    ]
+  },
+  "linux_timing": {
+    "passed": 25,
+    "failed": 0,
+    "distribution": "Ubuntu on E: backed WSL",
+    "container": false
+  },
+  "pit_audit": {
+    "status": "PASS",
+    "checks_passed": [
+      "A1",
+      "A2",
+      "A3",
+      "A4",
+      "A5",
+      "A6",
+      "A7",
+      "A8",
+      "A9",
+      "A10",
+      "A11"
+    ],
+    "audited_at_utc": "2026-09-29T16:52:31.648919+00:00"
+  },
+  "production": {
+    "desktop_main_pid_at_handoff": 42168,
+    "desktop_private_health": 200,
+    "web_health": 200,
+    "web_port": 8899,
+    "live_halt_present": true,
+    "human_order_approval": "required",
+    "model_context": 8192
+  },
+  "evidence": {
+    "native": "E:\\codex-runtime\\investment-ai\\vibe-trading\\logs\\desktop-qa-final\\native-confirmed\\results.json",
+    "web": "E:\\codex-runtime\\investment-ai\\vibe-trading\\logs\\e2e\\20260929_124708\\results.json",
+    "paper": "E:\\codex-runtime\\investment-ai\\vibe-trading\\logs\\paper-browser-confirmed-20260929\\paper-results.json",
+    "linux_timing": "E:\\codex-runtime\\investment-ai\\vibe-trading\\logs\\linux_intraday_current.xml",
+    "pit_audit": "E:\\codex-runtime\\investment-ai\\vibe-trading\\home\\pit_audit_receipt.json",
+    "source_sync": "E:\\codex-runtime\\investment-ai\\vibe-trading\\src_sync_receipt.json",
+    "memory_exhaustion": "E:\\codex-runtime\\investment-ai\\vibe-trading\\logs\\memory_exhaustion_events_20260929.json"
+  },
+  "prior_failed_or_invalid_attempts": [
+    "Initial native no-tools observation lacked an empty registry; superseded by verified 14-pass run.",
+    "Initial strict web run had a 1024px report-viewer failure; fixed and rerun 121/121.",
+    "The original in-memory PIT audit timed out; readonly E: index audit now passes A1-A11."
+  ],
   "open_rows": [
-    {
-      "action": "Disable tools in dedicated QA config, preserve configured provider, use fresh QA output, repeat actual UI prompt.",
-      "status": "UNRUN",
-      "id": "safe-ollama-technical-isolation"
-    },
-    {
-      "action": "Exercise a real enabled report control with observed state change.",
-      "status": "UNRUN",
-      "id": "report-internal-core-controls"
-    },
-    {
-      "action": "Wait for ordinary viewport traversal to show the iframe before screenshot and inspect it.",
-      "status": "UNRUN",
-      "id": "report-frame-visual-acceptance"
-    },
-    {
-      "action": "Repair keyboard navigation and repeat real-window back then forward.",
-      "status": "FAIL",
-      "id": "desktop-history-back-forward"
-    },
-    {
-      "action": "Trigger IPC without awaiting old renderer context; wait for new origin/content and old-listener closure.",
-      "status": "UNVERIFIED",
-      "id": "backend-recovery"
-    },
-    {
-      "action": "Capture request URL/status and distinguish app defects from intentional lifecycle disconnects.",
-      "status": "UNRESOLVED",
-      "id": "console-resource-errors"
-    },
-    {
-      "action": "Verify the user-facing Open in browser path independently.",
-      "status": "UNRUN",
-      "id": "os-default-browser-report-handoff"
-    }
-  ],
-  "self_review": [
-    "Harness parses and executed actual native surface, but must be hardened before repeat use: exclusive fresh output, technical MCP/tool isolation, fire-and-observe IPC restart, URL-attributed console errors, actual report-control state assertions, and visible report screenshot.",
-    "No Git index, commit, push, existing source, runtime configuration, scheduler, credentials, writer marker, user existing content, or live orders were changed by this worker.",
-    "Source editing stopped at 11:46; final receipt publication is the only subsequent canonical file write. All app profiles, logs, sessions and screenshots stayed on E:."
-  ],
-  "changed_files": [
-    "tools/e2e/desktop-ui-smoke.mjs",
-    "tools/e2e/DESKTOP_ACCEPTANCE_2026-09-29.json"
-  ],
-  "commits": []
+    "The original Linux container UI gate was not run: the installed Docker data root is on D:, conflicting with the E:-only storage rule. WSL Linux timing was verified separately.",
+    "Intraday bar completion is guarded, but intraday order-fill/backtest timing is not certified for tradeable claims; the warehouse/backtest path remains end-of-day scoped.",
+    "The production model alias has the same verified weights and 8192-context setting as the successful local-model smoke; the user's first production prompt remains a user test."
+  ]
 }
