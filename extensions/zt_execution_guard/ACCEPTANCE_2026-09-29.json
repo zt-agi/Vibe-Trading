@@ -1,0 +1,111 @@
+{
+  "schema": "vt-execution-repair-acceptance/1",
+  "checked_at": "2026-09-29T13:34:14.631526+00:00",
+  "owner": "TONG ZHONGWEI",
+  "machine": "PC1",
+  "status": "EXECUTION_REPAIR_ACCEPTED",
+  "plan_execution": "NOT_RESTARTED_IN_THIS_CHAT",
+  "version": "1.0.0",
+  "permissions": {
+    "persistent_approval_policy": "never",
+    "persistent_sandbox_mode": "danger-full-access",
+    "live_session": "Never / DangerFullAccess verified in Codex feedback log",
+    "doctor": "approval Never; unrestricted filesystem and enabled network; 0 fail; unrelated warnings remain"
+  },
+  "preflight": {
+    "checked_at": "2026-09-29T13:34:14.579378+00:00",
+    "drive": {
+      "status": "PASS",
+      "elapsed_seconds": 0.146,
+      "readable": [
+        "G:\\My Drive\\work\\AGENTS.md",
+        "G:\\My Drive\\work\\Investment-AI-Drive-Research\\AGENTS.md",
+        "G:\\My Drive\\work\\Investment-AI-Drive-Research\\VT_UI.html"
+      ]
+    },
+    "memory": {
+      "status": "PASS",
+      "committed_bytes": 51311382528,
+      "commit_limit_bytes": 60800303104,
+      "headroom_bytes": 9488920576,
+      "commit_percent": 84.39,
+      "required": "commit < 90% and at least 4 GiB headroom"
+    },
+    "status": "PASS"
+  },
+  "deployment": [
+    {
+      "source": "G:\\My Drive\\work\\Investment-AI-Drive-Research\\third_party\\upstream_sources\\Vibe-Trading\\extensions\\zt_execution_guard\\guard.py",
+      "deployed": "E:\\codex-runtime\\investment-ai\\vibe-trading\\tools\\execution_guard.py",
+      "sha256": "14a5c12edf1ca69e2cd45bdd79483a0cda939fe361e74253527ba55e6c40dcc6",
+      "parity": "PASS"
+    },
+    {
+      "source": "G:\\My Drive\\work\\Investment-AI-Drive-Research\\third_party\\upstream_sources\\Vibe-Trading\\extensions\\zt_execution_guard\\run_logged.ps1",
+      "deployed": "E:\\codex-runtime\\investment-ai\\vibe-trading\\bin\\run_logged.ps1",
+      "sha256": "b2362568255141dc407fb5053148bf441a0f5492f59363dbabe50f209690ffae",
+      "parity": "PASS"
+    }
+  ],
+  "regressions": {
+    "status": "PASS",
+    "cases": 12,
+    "runtime_seconds": 4.754
+  },
+  "installed_runner_cases": [
+    {
+      "case": "success",
+      "expected_status": "PASS",
+      "observed_status": "PASS",
+      "exit_code": 0,
+      "receipt": "E:\\codex-runtime\\investment-ai\\vibe-trading\\logs\\execution_guard\\guard_accept_success-8c48d764d830\\state.json",
+      "elapsed_seconds": 0.224,
+      "verdict": "PASS"
+    },
+    {
+      "case": "failure",
+      "expected_status": "FAILED",
+      "observed_status": "FAILED",
+      "exit_code": 7,
+      "receipt": "E:\\codex-runtime\\investment-ai\\vibe-trading\\logs\\execution_guard\\guard_accept_failure-70cfb22fa231\\state.json",
+      "elapsed_seconds": 0.233,
+      "verdict": "PASS"
+    },
+    {
+      "case": "timeout",
+      "expected_status": "TIMEOUT",
+      "observed_status": "TIMEOUT",
+      "exit_code": 124,
+      "receipt": "E:\\codex-runtime\\investment-ai\\vibe-trading\\logs\\execution_guard\\guard_accept_timeout-996f534846b8\\state.json",
+      "elapsed_seconds": 1.494,
+      "verdict": "PASS"
+    },
+    {
+      "case": "quoting",
+      "expected_status": "PASS",
+      "observed_status": "PASS",
+      "exit_code": 0,
+      "receipt": "E:\\codex-runtime\\investment-ai\\vibe-trading\\logs\\execution_guard\\guard_accept_quoting-aabf1a2c68e8\\state.json",
+      "elapsed_seconds": 0.447,
+      "verdict": "PASS"
+    },
+    {
+      "case": "missing_cwd",
+      "expected_status": "LAUNCH_FAILED",
+      "observed_status": "LAUNCH_FAILED",
+      "exit_code": 127,
+      "receipt": "E:\\codex-runtime\\investment-ai\\vibe-trading\\logs\\execution_guard\\guard_accept_missing_cwd-24b71e75f872\\state.json",
+      "elapsed_seconds": 0.005,
+      "verdict": "PASS"
+    }
+  ],
+  "rollback": {
+    "wrapper_backup": "E:\\codex-runtime\\investment-ai\\vibe-trading\\backups\\execution_guard\\20260929T132855Z\\run_logged.ps1",
+    "backup_sha256": "39161c119bc6416cef2ffb619cbe7222e52acda16074090e0056b493d33adb6d"
+  },
+  "cause_boundary": "Prior host/tool stall verified. Exact underlying cause remains unconfirmed. Later Windows memory-exhaustion events are separately observed.",
+  "limits": [
+    "The guard bounds its child processes; it cannot interrupt a host request that hangs before it starts.",
+    "No desktop or web application acceptance is implied. The active implementation worker retains its scope."
+  ]
+}
