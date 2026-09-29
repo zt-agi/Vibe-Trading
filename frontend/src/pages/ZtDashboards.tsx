@@ -371,9 +371,12 @@ function PreflightPanel({
   error: LoadError | null;
   loading: boolean;
 }) {
-  const [showOk, setShowOk] = useState(true);
+  // Problems are always shown in full; OK checks collapse to chips until expanded.
+  const [expanded, setExpanded] = useState(false);
   const checks = useMemo(() => problemsFirst(report?.checks ?? []), [report]);
-  const visible = showOk ? checks : checks.filter((check) => check.status !== "OK");
+  const problems = checks.filter((check) => check.status !== "OK");
+  const passing = checks.filter((check) => check.status === "OK");
+  const rows = expanded ? checks : problems;
   return (
     <section aria-labelledby="zt-preflight" data-testid="zt-preflight" className="space-y-3">
       <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
@@ -400,13 +403,16 @@ function PreflightPanel({
               })}
             </span>
             <span className="font-mono">{report.generated_at?.slice(0, 19).replace("T", " ")} UTC</span>
-            <button
-              type="button"
-              onClick={() => setShowOk((value) => !value)}
-              className="rounded-md border px-2 py-1 font-medium transition hover:bg-muted"
-            >
-              {showOk ? tz("hideOk", "Hide OK checks") : tz("showOk", "Show all checks")}
-            </button>
+            {passing.length ? (
+              <button
+                type="button"
+                aria-expanded={expanded}
+                onClick={() => setExpanded((value) => !value)}
+                className="rounded-md border px-2 py-1 font-medium transition hover:bg-muted"
+              >
+                {expanded ? tz("hideOk", "Hide OK checks") : tz("showOk", "Show all checks")}
+              </button>
+            ) : null}
           </div>
         ) : null}
       </div>
@@ -419,17 +425,31 @@ function PreflightPanel({
         </div>
       ) : null}
 
-      {report ? (
-        <ul className="grid gap-2 lg:grid-cols-2" aria-label={tz("preflightList", "Pre-flight checks")}>
-          {visible.map((check) => (
+      {report && rows.length ? (
+        <ul className="grid grid-cols-1 gap-2 lg:grid-cols-2" aria-label={tz("preflightList", "Pre-flight checks")}>
+          {rows.map((check) => (
             <PreflightRow key={check.id} check={check} tz={tz} />
           ))}
-          {visible.length === 0 ? (
-            <li className="rounded-md border border-dashed p-3 text-sm text-muted-foreground">
-              {tz("allOk", "Every check is OK.")}
-            </li>
-          ) : null}
         </ul>
+      ) : null}
+
+      {report && !expanded && passing.length ? (
+        <div className="flex flex-wrap items-center gap-1.5 text-xs" aria-label={tz("okList", "Checks that are OK")}>
+          <span className="text-muted-foreground">
+            {problems.length ? tz("alsoOk", "OK:") : tz("allOk", "All checks OK:")}
+          </span>
+          {passing.map((check) => (
+            <span
+              key={check.id}
+              data-testid="zt-preflight-ok"
+              data-check-id={check.id}
+              title={check.summary}
+              className="rounded border border-success/30 bg-success/5 px-2 py-0.5"
+            >
+              {check.label}
+            </span>
+          ))}
+        </div>
       ) : null}
     </section>
   );
@@ -572,7 +592,7 @@ function SnapshotSection({
       ) : null}
 
       {envelope && envelope.status !== "MISSING" ? (
-        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+        <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
           <Card title={tz("freshness", "Freshness")}>
             <div className="flex items-center gap-2">
               <StatusPill status={envelope.status} />
@@ -673,11 +693,11 @@ function SnapshotSection({
 
           <Card title={tz("context", "Market and macro context")} className="md:col-span-2 xl:col-span-3">
             {context.length ? (
-              <div className="grid gap-x-6 gap-y-1 text-xs sm:grid-cols-2 lg:grid-cols-3">
+              <div className="grid grid-cols-1 gap-x-6 gap-y-1 text-xs sm:grid-cols-2 lg:grid-cols-3">
                 {context.map((row) => (
-                  <div key={`${row.symbol ?? row.series}`} className="flex justify-between gap-2">
-                    <span className="font-mono">{row.symbol ?? row.series}</span>
-                    <span className="font-mono text-muted-foreground">
+                  <div key={`${row.symbol ?? row.series}`} className="flex min-w-0 justify-between gap-2">
+                    <span className="shrink-0 font-mono">{row.symbol ?? row.series}</span>
+                    <span className="min-w-0 break-words text-right font-mono text-muted-foreground">
                       {row.close ?? row.value ?? "—"} · {row.as_of} · {row.price_status ?? row.status}
                     </span>
                   </div>
@@ -741,12 +761,12 @@ function ReportsSection({
         </p>
       ) : null}
 
-      <ul className="grid gap-2">
+      <ul className="grid grid-cols-1 gap-2">
         {reports.map((item) => (
           <li
             key={item.id}
             className={cn(
-              "flex flex-col gap-2 rounded-md border p-3 sm:flex-row sm:items-center sm:justify-between",
+              "flex min-w-0 flex-col gap-2 rounded-md border p-3 sm:flex-row sm:items-center sm:justify-between",
               item.id === activeId && "border-primary/60 bg-primary/5",
               !item.viewable && "opacity-70",
             )}
@@ -793,7 +813,7 @@ function ReportsSection({
 
 function Card({ title, children, className }: { title: string; children: ReactNode; className?: string }) {
   return (
-    <article className={cn("space-y-2 rounded-md border p-4", className)}>
+    <article className={cn("min-w-0 space-y-2 rounded-md border p-4", className)}>
       <h3 className="text-sm font-medium">{title}</h3>
       {children}
     </article>

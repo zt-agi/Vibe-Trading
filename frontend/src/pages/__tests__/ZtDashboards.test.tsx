@@ -278,11 +278,28 @@ describe("ZT pre-flight panel", () => {
     apiMock.getZtSnapshot.mockReset().mockResolvedValue(SNAPSHOT);
   });
 
-  it("shows every check at the top, problems first, with how to fix", async () => {
+  it("shows the problems at the top with how to fix, and the OK checks as chips", async () => {
     renderPage();
     const panel = await screen.findByTestId("zt-preflight");
     expect(within(panel).getByRole("heading", { name: /Pre-flight/ })).toHaveTextContent("FAIL");
     expect(within(panel).getByTestId("zt-preflight-counts")).toHaveTextContent("2 OK · 1 WARN · 1 FAIL");
+    const rows = within(panel).getAllByTestId("zt-preflight-check");
+    expect(rows.map((row) => row.getAttribute("data-check-id"))).toEqual(["llm.ollama", "pit.audit_receipt"]);
+    expect(rows[0]).toHaveTextContent("How to fix: Start it with bin\\start_ollama.ps1.");
+    expect(within(rows[0]).getByText("models")).toBeInTheDocument();
+    expect(within(rows[0]).getByText('["gpt-oss:20b"]')).toBeInTheDocument();
+    const chips = within(panel).getAllByTestId("zt-preflight-ok");
+    expect(chips.map((chip) => chip.textContent)).toEqual(["LLM provider", "Live kill switch (live\\HALT)"]);
+    expect(chips[0]).toHaveAttribute("title", "ollama · gpt-oss:20b");
+    // The panel sits above the snapshot and the report list.
+    const snapshotHeading = screen.getByRole("heading", { name: "Daily snapshot" });
+    expect(panel.compareDocumentPosition(snapshotHeading) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  it("expands every check on request", async () => {
+    renderPage();
+    const panel = await screen.findByTestId("zt-preflight");
+    fireEvent.click(within(panel).getByRole("button", { name: "Show all checks" }));
     const rows = within(panel).getAllByTestId("zt-preflight-check");
     expect(rows.map((row) => row.getAttribute("data-check-id"))).toEqual([
       "llm.ollama",
@@ -290,22 +307,23 @@ describe("ZT pre-flight panel", () => {
       "llm.provider",
       "live.halt",
     ]);
-    expect(rows[0]).toHaveTextContent("How to fix: Start it with bin\\start_ollama.ps1.");
     expect(rows[2]).not.toHaveTextContent("How to fix");
-    expect(within(rows[0]).getByText("models")).toBeInTheDocument();
-    expect(within(rows[0]).getByText('["gpt-oss:20b"]')).toBeInTheDocument();
-    // The panel sits above the snapshot and the report list.
-    const snapshotHeading = screen.getByRole("heading", { name: "Daily snapshot" });
-    expect(panel.compareDocumentPosition(snapshotHeading) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
-  });
-
-  it("can hide the OK checks", async () => {
-    renderPage();
-    const panel = await screen.findByTestId("zt-preflight");
+    expect(within(panel).queryAllByTestId("zt-preflight-ok")).toHaveLength(0);
     fireEvent.click(within(panel).getByRole("button", { name: "Hide OK checks" }));
     expect(within(panel).getAllByTestId("zt-preflight-check")).toHaveLength(2);
-    fireEvent.click(within(panel).getByRole("button", { name: "Show all checks" }));
-    expect(within(panel).getAllByTestId("zt-preflight-check")).toHaveLength(4);
+  });
+
+  it("says so when every check is OK", async () => {
+    preflightMock.fetchZtPreflight.mockResolvedValue({
+      ...PREFLIGHT,
+      overall: "OK",
+      counts: { OK: 2, WARN: 0, FAIL: 0 },
+      checks: PREFLIGHT.checks.filter((check) => check.status === "OK"),
+    });
+    renderPage();
+    const panel = await screen.findByTestId("zt-preflight");
+    expect(await within(panel).findByText("All checks OK:")).toBeInTheDocument();
+    expect(within(panel).queryAllByTestId("zt-preflight-check")).toHaveLength(0);
   });
 
   it("reloads with the Refresh button", async () => {
