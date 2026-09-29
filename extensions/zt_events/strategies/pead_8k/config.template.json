@@ -1,0 +1,29 @@
+{
+  "zt_template": "pead_8k",
+  "codes": [],
+  "start_date": "",
+  "end_date": "",
+  "source": "pitdb",
+  "interval": "1D",
+  "engine": "daily",
+  "benchmark": "SPY.US",
+  "initial_cash": 1000000,
+  "position_adjustment": "hold",
+  "pit": {
+    "mode": "snapshot",
+    "run_asof_utc": "",
+    "availability_lag": "36h",
+    "claim": "research",
+    "allow_reconstructed": false
+  },
+  "pead": {
+    "hold_sessions": 20,
+    "long_buckets": ["Q5"],
+    "short_buckets": [],
+    "slot_weight": 0.1,
+    "sue_bucket_edges": [-1.0, -0.25, 0.25, 1.0],
+    "max_sue_lag_sessions": 1,
+    "entry_rule": "decision at the first session close after both the 8-K Item 2.02 acceptance and the SUE knowledge time; VT fills at the next session open",
+    "events_file": "pead_events.json"
+  }
+}
