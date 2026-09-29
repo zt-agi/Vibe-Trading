@@ -196,6 +196,10 @@ async function bootInternal(): Promise<void> {
   try {
     const url = await backend.start();
     await mainWindow.loadURL(url);
+    const requestedZoom = Number(process.env.VIBE_TRADING_DESKTOP_ZOOM_FACTOR ?? "1");
+    if (Number.isFinite(requestedZoom) && requestedZoom >= 0.75 && requestedZoom <= 2) {
+      mainWindow.webContents.setZoomFactor(requestedZoom);
+    }
     writeParentDeathSmokeRecord(url);
   } catch (error) {
     await backend.stop();
