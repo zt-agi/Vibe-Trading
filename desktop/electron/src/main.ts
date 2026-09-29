@@ -83,6 +83,18 @@ function createWindow(): void {
     },
   });
   const rendererSession = mainWindow.webContents.session;
+  // Electron does not supply browser history shortcuts to a frameless SPA.
+  mainWindow.webContents.on("before-input-event", (event, input) => {
+    if (input.type !== "keyDown" || !input.alt || input.control || input.meta || input.shift) return;
+    const history = mainWindow?.webContents.navigationHistory;
+    if (input.key === "ArrowLeft") {
+      event.preventDefault();
+      if (history?.canGoBack()) history.goBack();
+    } else if (input.key === "ArrowRight") {
+      event.preventDefault();
+      if (history?.canGoForward()) history.goForward();
+    }
+  });
   rendererSession.setPermissionCheckHandler(() => false);
   rendererSession.setPermissionRequestHandler((_webContents, _permission, callback) => callback(false));
   rendererSession.webRequest.onBeforeSendHeaders(

@@ -795,8 +795,8 @@ class PitdbLoader:
 
         prices = frame[["open", "high", "low", "close"]].apply(pd.to_numeric, errors="coerce")
         null_bars = prices.isna().any(axis=1)
-        # ZT add-on: a revision captured before its own session closed (16:00
-        # New York) is an unfinished intraday bar, not a finished one known
+        # ZT add-on: a revision captured before its NYSE session closed (including
+        # early closes) is an unfinished intraday bar, not a finished one known
         # early; it is treated as unknown, like a bar outside the lag.
         closes = US_EQUITY.close_utc(pd.to_datetime(frame["event_date"])).asi8
         captured = pd.DatetimeIndex(pd.to_datetime(frame["knowledge_time"])).tz_localize("UTC").asi8

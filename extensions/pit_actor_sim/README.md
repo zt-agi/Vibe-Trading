@@ -76,3 +76,13 @@ Adapted from ai-hedge-fund (MIT, commit 5d2c7ca2), whose blind snapshot still sh
 Tests: `python -m unittest test_server test_packets test_pit_guard test_forecast_ledger test_blinding test_role_templates test_ledger_contamination`.
 
 The existing pilot is an integration example, not calibrated alpha. No live trading, order placement, or autonomous schedule is enabled by this extension.
+# Read-only audit refresh
+
+`--refresh-audit` validates the complete lake/index freshness receipt before and
+after a fixed child process calls `connect(read_only=True, wait_minutes=0)` and
+the warehouse's native audit. It does not bootstrap an in-memory warehouse.
+The child pins the configured index and lake; all A1–A11 checks and overall PASS
+are required. A mismatch, missing check, stale receipt, timeout, nonzero exit,
+changed index size/mtime or WAL preserves the prior audit receipt. The deadline
+is 60 seconds. Current index metadata is checked for this refresh only; existing
+index receipts do not provide a historical index fingerprint.

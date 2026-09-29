@@ -131,7 +131,7 @@ export function OptionsLab() {
     : dash;
 
   return (
-    <div className="flex w-full flex-col gap-4 p-6">
+    <div className="flex min-w-0 w-full flex-col gap-4 p-4 sm:p-6">
       {/* Header */}
       <div>
         <div className="flex items-center gap-3">
@@ -142,8 +142,8 @@ export function OptionsLab() {
       </div>
 
       {/* Builder + results */}
-      <div className="grid gap-4 xl:grid-cols-3">
-        <div className="xl:col-span-1">
+      <div className="grid min-w-0 grid-cols-1 gap-4 xl:grid-cols-3">
+        <div className="min-w-0 xl:col-span-1">
           <StrategyBuilder
             legs={legs}
             params={params}
@@ -154,7 +154,7 @@ export function OptionsLab() {
           />
         </div>
 
-        <div className="flex flex-col gap-4 xl:col-span-2">
+        <div className="flex min-w-0 flex-col gap-4 xl:col-span-2">
           {/* Key-metrics strip */}
           <div className={cn("grid grid-cols-2 gap-3 lg:grid-cols-4", loading && "opacity-60")}>
             <MetricCard

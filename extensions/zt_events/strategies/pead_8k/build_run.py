@@ -145,11 +145,17 @@ def build(run_dir: Path | str, *, start: str, end: str, run_asof: str,
             reason = f"no SUE at the run as-of ({row.sue_status})"
         elif pd.isna(row.sue_bucket):
             reason = f"SUE first known after the close of day +{max_sue_lag_sessions}"
+        if not reason and str(row.sue_bucket) in long_buckets + short_buckets and claim == "tradeable":
+            pit_reason = core.entry_pit_reason(row._asdict())
+            if pit_reason:
+                raise ValueError(f"{row.accession}: {pit_reason}; use claim='research'")
         record = {"ticker": row.ticker, "accession": row.accession,
                   "accepted_utc": core.iso(row.knowledge_time),
                   "sue_known_utc": core.iso(row.sue_knowledge_time),
                   "sue": None if row.sue is None or pd.isna(row.sue) else round(float(row.sue), 6),
                   "bucket": None if pd.isna(row.sue_bucket) else str(row.sue_bucket)}
+        record.update(pit_class=getattr(row, "pit_class", None),
+                      sue_pit_class=getattr(row, "sue_pit_class", None))
         if reason:
             excluded.append({**record, "reason": reason})
         else:
@@ -188,7 +194,7 @@ def build(run_dir: Path | str, *, start: str, end: str, run_asof: str,
     _validate_signal_engine_source(engine_path)
     (run_dir / "config.json").write_text(json.dumps(config, indent=2) + "\n", encoding="utf-8", newline="\n")
     audit = {"run_asof_utc": core.iso(asof), "provenance": provenance, "notes": notes,
-             "pit_classes": {"events": sorted(set(events["pit_class"])),
+             "pit_classes": {"events": sorted(set(events["pit_class"].fillna("MISSING").astype(str))),
                              "sue": sorted({c for c in events["sue_pit_class"].dropna()})},
              "used": used, "excluded": excluded}
     (run_dir / "pead_events.json").write_text(json.dumps(audit, indent=2, default=str) + "\n",

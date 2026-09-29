@@ -35,6 +35,46 @@ def _load(path: Path, name: str):
 build_run = _load(STRATEGY / "build_run.py", "zt_pead_build_run")
 
 
+@pytest.mark.parametrize("field", ["pit_class", "sue_pit_class"])
+@pytest.mark.parametrize("value", [None, "UNKNOWN", "NON_PIT", "RECONSTRUCTED_PIT"])
+def test_tradeable_builder_stops_before_writing_unverified_inputs(tmp_path, field, value):
+    from contextlib import nullcontext
+    from types import SimpleNamespace
+    event = pd.DataFrame([{"accession": "test", "duplicate_of": None, "sue_status": "OK",
+                           "decision_time": pd.Timestamp("2025-08-01"), "sue_bucket": "Q5",
+                           "pit_class": "TRUE_PIT", "sue_pit_class": "OBSERVED_PIT", field: value}])
+    fake = SimpleNamespace(asof_utc=core.asof_utc, entry_pit_reason=core.entry_pit_reason,
+                           store=lambda: nullcontext((None, {})), study_frame=lambda *a, **k: (event, []))
+    out = tmp_path / "invalid"
+    with pytest.raises(ValueError, match=field):
+        build_run.build(out, start="2025-01-01", end="2025-12-31", run_asof=RUN_ASOF,
+                        claim="tradeable", pit_mode="formation", core=fake)
+    assert not out.exists()
+
+
+def test_tradeable_builder_preserves_unrelated_research_rows(tmp_path):
+    from contextlib import nullcontext
+    from types import SimpleNamespace
+    valid = {"ticker": "AAA", "accession": "valid", "duplicate_of": None, "sue_status": "OK",
+             "decision_time": pd.Timestamp("2025-08-01"), "sue_bucket": "Q5", "sue": 2.0,
+             "knowledge_time": pd.Timestamp("2025-07-31T20:00:00"),
+             "sue_knowledge_time": pd.Timestamp("2025-07-31T21:00:00"),
+             "pit_class": "TRUE_PIT", "sue_pit_class": "OBSERVED_PIT"}
+    rows = [valid, {**valid, "accession": "pending", "sue_status": "PENDING", "decision_time": pd.NaT,
+                    "sue_pit_class": None},
+            {**valid, "accession": "duplicate", "duplicate_of": "valid", "pit_class": "NON_PIT"},
+            {**valid, "accession": "untraded", "sue_bucket": "Q3", "pit_class": None}]
+    frame = pd.DataFrame(rows)
+    fake = SimpleNamespace(asof_utc=core.asof_utc, iso=core.iso, entry_pit_reason=core.entry_pit_reason,
+                           store=lambda: nullcontext((None, {})), study_frame=lambda *a, **k: (frame, []))
+    out = tmp_path / "mixed"
+    result = build_run.build(out, start="2025-01-01", end="2025-12-31", run_asof=RUN_ASOF,
+                             claim="tradeable", pit_mode="formation", core=fake)
+    assert result["events_traded"] == 1 and result["events_excluded"] == 2
+    audit = json.loads((out / "pead_events.json").read_text())
+    assert any(row["accession"] == "untraded" and not row["traded"] for row in audit["used"])
+
+
 def _vt_load(path: Path, name: str):
     """Load a signal engine exactly as VT's runner does (AST sandbox, then the interface check)."""
     from backtest.runner import _load_module_from_file, _validate_signal_engine_class

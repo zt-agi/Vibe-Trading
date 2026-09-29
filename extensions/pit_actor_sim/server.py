@@ -104,19 +104,35 @@ def refresh_index() -> dict:
 
 def refresh_audit() -> dict:
     """Run the PIT audit outside the MCP server and bind its receipt to the lake."""
+    require_fresh_index(full=True)
     before = lake_signature()
     env = child_env()
-    env["PITDB_INDEX"] = "memory"
     root = project()
-    run = subprocess.run([sys.executable, "-m", "pitdb", "audit"],
+    C = pit_guard.pitdb_config(root)
+    index = index_path().resolve(strict=True)
+    recorded = json.loads((runtime() / pit_guard.INDEX_RECEIPT).read_text(encoding="utf-8"))
+    if C.DB_PATH is None or C.DB_PATH.resolve(strict=True) != index or \
+            Path(recorded.get("index_path", "")).resolve() != index:
+        raise RuntimeError("PIT audit index path mismatch")
+    stat = index.stat()
+    index_before = (stat.st_size, stat.st_mtime_ns)
+    wal = Path(str(index) + ".wal")
+    if wal.exists():
+        raise RuntimeError("PIT audit requires a closed index without a WAL")
+    run = subprocess.run([sys.executable, str(Path(__file__).with_name("audit_worker.py")),
+                          str(index), str(C.LAKE_ROOT.resolve(strict=True))],
                          cwd=root / "implementation" / "pit_warehouse",
-                         env=env, stdin=subprocess.DEVNULL, capture_output=True, text=True, timeout=300)
+                         env=env, stdin=subprocess.DEVNULL, capture_output=True, text=True, timeout=60)
     if run.returncode or "OVERALL: PASS" not in run.stdout:
         raise RuntimeError("PIT audit failed: " + (run.stdout + run.stderr)[-3000:])
     checks = pit_guard.parse_audit_checks(run.stdout)
-    if checks["failed"]:
+    if checks["failed"] or set(checks["passed"]) != {f"A{i}" for i in range(1, 12)}:
         raise RuntimeError("PIT audit failed: " + ", ".join(checks["failed"]))
     after = lake_signature()
+    require_fresh_index(full=True)
+    stat = index.stat()
+    if index_before != (stat.st_size, stat.st_mtime_ns) or wal.exists():
+        raise RuntimeError("PIT index changed during read-only audit")
     if before != after:
         raise RuntimeError("Lake changed during audit; retry preflight")
     # checks_passed names every check the audit printed as PASS, so a consumer

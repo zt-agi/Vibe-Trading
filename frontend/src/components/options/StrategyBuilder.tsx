@@ -178,8 +178,8 @@ export function StrategyBuilder({
 
       {/* Parameters */}
       <div className="mt-4 mb-2 text-xs font-medium text-muted-foreground">{t("options.builder.parameters")}</div>
-      <div className="grid grid-cols-2 gap-3">
-        <div className="flex flex-col gap-1">
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+        <div className="flex min-w-0 flex-col gap-1">
           <label className="text-[11px] text-muted-foreground">{t("options.builder.entrySpot")}</label>
           <input
             type="number"
@@ -190,7 +190,7 @@ export function StrategyBuilder({
             className={cn(INPUT_CLS, "tabular-nums")}
           />
         </div>
-        <div className="flex flex-col gap-1">
+        <div className="flex min-w-0 flex-col gap-1">
           <label className="text-[11px] text-muted-foreground">{t("options.builder.expiryDays")}</label>
           <input
             type="number"
@@ -201,7 +201,7 @@ export function StrategyBuilder({
             className={cn(INPUT_CLS, "tabular-nums")}
           />
         </div>
-        <div className="flex flex-col gap-1">
+        <div className="flex min-w-0 flex-col gap-1">
           <label className="text-[11px] text-muted-foreground">{t("options.builder.volatility")}</label>
           <input
             type="number"
@@ -212,7 +212,7 @@ export function StrategyBuilder({
             className={cn(INPUT_CLS, "tabular-nums")}
           />
         </div>
-        <div className="flex flex-col gap-1">
+        <div className="flex min-w-0 flex-col gap-1">
           <label className="text-[11px] text-muted-foreground">{t("options.builder.riskFreeRate")}</label>
           <input
             type="number"
@@ -222,7 +222,7 @@ export function StrategyBuilder({
             className={cn(INPUT_CLS, "tabular-nums")}
           />
         </div>
-        <div className="flex flex-col gap-1">
+        <div className="flex min-w-0 flex-col gap-1">
           <label className="text-[11px] text-muted-foreground">{t("options.builder.multiplier")}</label>
           <input
             type="number"
@@ -234,7 +234,7 @@ export function StrategyBuilder({
           />
           <span className="text-[10px] text-muted-foreground/70">{t("options.builder.multiplierHint")}</span>
         </div>
-        <div className="flex flex-col gap-1">
+        <div className="flex min-w-0 flex-col gap-1">
           <label className="text-[11px] text-muted-foreground">{t("options.builder.commissionRate")}</label>
           <input
             type="number"

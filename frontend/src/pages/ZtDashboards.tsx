@@ -270,7 +270,7 @@ export function ZtDashboards() {
             type="button"
             onClick={() => void refresh()}
             disabled={loading}
-            className="inline-flex items-center gap-2 rounded-md border px-4 py-2 text-sm font-medium transition hover:bg-muted disabled:opacity-50"
+            className="inline-flex min-h-11 min-w-11 items-center gap-2 rounded-md border px-4 py-2 text-sm font-medium transition hover:bg-muted disabled:opacity-50"
           >
             {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
             {tz("refresh", "Refresh")}
@@ -293,7 +293,7 @@ export function ZtDashboards() {
                 <button
                   type="button"
                   onClick={() => void openInNewTab(viewer.item)}
-                  className="inline-flex items-center gap-1.5 rounded-md border px-3 py-1.5 text-xs font-medium transition hover:bg-muted"
+                  className="inline-flex min-h-11 min-w-11 items-center gap-1.5 rounded-md border px-3 py-1.5 text-xs font-medium transition hover:bg-muted"
                 >
                   <ExternalLink className="h-3.5 w-3.5" aria-hidden="true" />
                   {isDesktopShell() ? tz("openInBrowser", "Open in browser") : tz("newTab", "Open in new tab")}
@@ -301,7 +301,7 @@ export function ZtDashboards() {
                 <button
                   type="button"
                   onClick={closeReport}
-                  className="inline-flex items-center gap-1.5 rounded-md border px-3 py-1.5 text-xs font-medium transition hover:bg-muted"
+                  className="inline-flex min-h-11 min-w-11 items-center gap-1.5 rounded-md border px-3 py-1.5 text-xs font-medium transition hover:bg-muted"
                 >
                   <X className="h-3.5 w-3.5" aria-hidden="true" />
                   {tz("close", "Close")}
@@ -409,7 +409,7 @@ function PreflightPanel({
                 type="button"
                 aria-expanded={expanded}
                 onClick={() => setExpanded((value) => !value)}
-                className="rounded-md border px-2 py-1 font-medium transition hover:bg-muted"
+                className="min-h-11 min-w-11 rounded-md border px-2 py-1 font-medium transition hover:bg-muted"
               >
                 {expanded ? tz("hideOk", "Hide OK checks") : tz("showOk", "Show all checks")}
               </button>
@@ -555,7 +555,7 @@ function SnapshotSection({
           <select
             value={date}
             onChange={(event) => onDateChange(event.target.value)}
-            className="rounded-md border bg-background px-2 py-1.5 text-sm"
+            className="min-h-11 min-w-11 rounded-md border bg-background px-2 py-1.5 text-sm"
           >
             <option value="today">{tz("today", "Today")}</option>
             <option value="latest">{tz("latest", "Latest available")}</option>
@@ -584,7 +584,7 @@ function SnapshotSection({
             <button
               type="button"
               onClick={() => onDateChange("latest")}
-              className="mt-3 inline-flex items-center gap-1.5 rounded-md border px-3 py-1.5 text-xs font-medium transition hover:bg-muted"
+              className="mt-3 inline-flex min-h-11 min-w-11 items-center gap-1.5 rounded-md border px-3 py-1.5 text-xs font-medium transition hover:bg-muted"
             >
               {tz("showLatest", "Show latest ({{date}})", { date: data.latest_available })}
             </button>
@@ -803,7 +803,7 @@ function ReportsSection({
               disabled={!item.viewable}
               onClick={() => onOpen(item)}
               aria-label={tz("openReport", "Open {{title}}", { title: item.title })}
-              className="inline-flex shrink-0 items-center justify-center gap-1.5 rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground transition hover:opacity-90 disabled:cursor-not-allowed disabled:bg-muted disabled:text-muted-foreground"
+              className="inline-flex min-h-11 min-w-11 shrink-0 items-center justify-center gap-1.5 rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground transition hover:opacity-90 disabled:cursor-not-allowed disabled:bg-muted disabled:text-muted-foreground"
             >
               {tz("open", "Open")}
             </button>

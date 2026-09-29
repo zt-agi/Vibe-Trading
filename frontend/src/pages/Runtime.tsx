@@ -83,7 +83,7 @@ export function Runtime() {
   const summary = useMemo(() => summarizeRuntime(status), [status]);
 
   return (
-    <div className="min-h-screen p-6 lg:p-8">
+    <div className="min-w-0 min-h-screen break-words p-4 sm:p-6 lg:p-8">
       <div className="mx-auto flex w-full max-w-6xl flex-col gap-6">
         <section className="flex flex-col gap-4 border-b border-border/60 pb-6 lg:flex-row lg:items-end lg:justify-between">
           <div className="space-y-3">
@@ -103,7 +103,7 @@ export function Runtime() {
             type="button"
             onClick={() => loadStatus("refresh")}
             disabled={refreshing}
-            className="inline-flex items-center gap-2 rounded-md border border-border/60 px-4 py-2 text-sm font-medium transition hover:bg-muted/60 disabled:opacity-50"
+            className="inline-flex min-h-11 min-w-11 items-center gap-2 rounded-md border border-border/60 px-4 py-2 text-sm font-medium transition hover:bg-muted/60 disabled:opacity-50"
           >
             {refreshing ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
             {t("runtime.refresh")}
@@ -334,7 +334,7 @@ function SdkBrokerRuntimeCard({ broker, t, onRefresh }: { broker: LiveBrokerStat
             type="button"
             onClick={verify}
             disabled={verifying}
-            className="inline-flex items-center gap-2 rounded-md border border-border/60 px-4 py-2 text-sm font-medium transition hover:bg-muted/60 disabled:opacity-50"
+            className="inline-flex min-h-11 min-w-11 items-center gap-2 rounded-md border border-border/60 px-4 py-2 text-sm font-medium transition hover:bg-muted/60 disabled:opacity-50"
           >
             {verifying ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
             {t(state.action)}
@@ -438,7 +438,7 @@ function ConnectorMissingSetup({ broker, t }: { broker: string; t: TFunction }) 
   return (
     <section className="mt-4 rounded-xl border border-dashed border-border/60 bg-muted/40 p-4 shadow-sm">
       <p className="text-sm text-muted-foreground">{t(hints.introKey)}</p>
-      <ul className="mt-2 grid gap-1 font-mono text-sm">
+      <ul className="mt-2 grid min-w-0 gap-1 break-all font-mono text-sm">
         {hints.variables.map((variable) => (
           <li key={variable}>{variable}</li>
         ))}
@@ -494,7 +494,7 @@ function KeyValue({ label, value }: { label: string; value: string }) {
   return (
     <div>
       <div className="text-[11px] uppercase text-muted-foreground">{label}</div>
-      <div className="font-mono text-sm">{value || "-"}</div>
+      <div className="min-w-0 break-all font-mono text-sm">{value || "-"}</div>
     </div>
   );
 }

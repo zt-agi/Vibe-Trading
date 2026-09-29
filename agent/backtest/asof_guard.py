@@ -118,6 +118,10 @@ class SessionClock:
     def close_utc(self, days: Any) -> pd.DatetimeIndex:
         """Session close of each day, in UTC (next local midnight when open-ended)."""
         dates = calendar_days(days)
+        if self.tz == "America/New_York" and self.close == dt.time(16, 0):
+            from src.quantlib.event_study import session_close_times
+
+            return pd.DatetimeIndex(session_close_times(dates).reindex(dates))
         if self.close is None:
             return _local_to_utc(dates + pd.Timedelta(days=1), dt.time(0), self.tz)
         return _local_to_utc(dates, self.close, self.tz)
@@ -139,7 +143,7 @@ _MARKET_TZ = {
 def clock_for(code: str) -> SessionClock:
     """The session clock a code's daily bars are dated in.
 
-    US equities and indexes close at 16:00 New York time, Canadian equities at
+    US equities and indexes use the NYSE calendar (including early closes); Canadian equities close at
     16:00 Toronto time. Every other market is treated as open until local
     midnight (UTC for crypto, FX, non-Chinese futures and unknown codes),
     which can only make a bar count as finished later than it really is.

@@ -12,7 +12,7 @@
 //
 // Other knobs: VT_E2E_CHANNEL (e.g. msedge: use the installed Edge, no browser
 // download), VT_E2E_OUTPUT (results.json and screenshots; default ./test-results),
-// VT_E2E_WORKERS, VT_E2E_PYTHON, VT_E2E_IGNORE_CONSOLE (extra regex to ignore).
+// VT_E2E_WORKERS, VT_E2E_PYTHON. Console errors fail the gate.
 // Traces, videos and the HTML report stay off so the key is never written to disk.
 import { randomBytes } from "node:crypto";
 import path from "node:path";
@@ -51,6 +51,7 @@ export default defineConfig({
     timezoneId: "America/New_York",
   },
   projects: [
+    ...[1680, 1024, 800, 500].map(width => ({ name: `w${width}`, grepInvert: /@desktop/, use: { viewport: { width, height: 900 } } })),
     { name: "w1366", grepInvert: /@desktop/, use: { viewport: { width: 1366, height: 900 } } },
     { name: "w390", grepInvert: /@desktop/, use: { viewport: { width: 390, height: 844 } } },
     // The desktop shell's renderer: 1280x820 window, no stored key, Bearer header on every request.

@@ -470,6 +470,16 @@ def history_study(con, provenance: Mapping[str, Any], *, asof: datetime,
                      sue_known_by_day=sue_known_by_day, n_boot=200)
 
 
+def entry_pit_reason(row: Mapping[str, Any]) -> str | None:
+    """Fail closed for entry claims; research rows and risk-reducing exits remain visible."""
+    allowed = {"TRUE_PIT", "OBSERVED_PIT"}
+    for field in ("pit_class", "sue_pit_class"):
+        value = row.get(field)
+        if not isinstance(value, str) or value not in allowed:
+            return f"{field}={value!r} is ineligible for a tradeable entry"
+    return None
+
+
 def pead_candidates(con, provenance: Mapping[str, Any], *, asof: datetime,
                     tickers: Sequence[str] | None = None, lookback_days: int = 10,
                     edges: Sequence[float] = DEFAULT_SUE_EDGES, long_bucket: str | None = None,
@@ -578,6 +588,11 @@ def pead_candidates(con, provenance: Mapping[str, Any], *, asof: datetime,
                                  if hist else None)
         rows.append(row)
     for row in rows:
+        reason = entry_pit_reason(row)
+        if reason:
+            row.update(pit_ineligible_reason=reason, ledger_eligible=False)
+            if row["status"] in ("ENTRY_DUE", "LATE"):
+                row["status"] = "PIT_INELIGIBLE"
         if row["direction"] != "NONE" and row["status"] in ("ENTRY_DUE", "LATE"):
             weight = slot_weight if row["direction"] == "LONG" else -slot_weight
             row["proposal_tag"] = proposal_tag("entry", row["accession"])
@@ -655,6 +670,10 @@ def proposal_arguments(row: Mapping[str, Any], kind: str, weight: float, hold_se
     Mechanical text only: the release, the SUE and its bucket, the timing. No
     outcome probability, hit rate or price target is written here.
     """
+    if kind == "entry":
+        reason = entry_pit_reason(row)
+        if reason:
+            raise ValueError(reason)
     symbol = row["ticker"]
     evidence = [f"sec:{row['accession']}"]
     if row.get("sue_knowledge_time"):

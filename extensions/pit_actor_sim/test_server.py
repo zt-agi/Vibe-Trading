@@ -72,8 +72,14 @@ class ExtensionGuardsTest(unittest.TestCase):
         with tempfile.TemporaryDirectory(dir=os.environ.get("VIBE_TRADING_HOME")) as directory:
             root = Path(directory) / "work" / "Investment-AI-Drive-Research"
             root.mkdir(parents=True)
+            index = Path(directory) / "index.duckdb"
+            index.write_bytes(b"fixture")
+            (Path(directory) / server.pit_guard.INDEX_RECEIPT).write_text(json.dumps({"index_path": str(index)}))
             with patch.object(server, "project", return_value=root), \
                  patch.object(server, "runtime", return_value=Path(directory)), \
+                 patch.object(server, "require_fresh_index"), \
+                 patch.object(server, "index_path", return_value=index), \
+                 patch.object(server.pit_guard, "pitdb_config", return_value=SimpleNamespace(DB_PATH=index, LAKE_ROOT=root)), \
                  patch.object(server, "lake_signature", return_value={"files": {}}), \
                  patch.object(server, "child_env", return_value={}), \
                  patch.object(server.subprocess, "run", return_value=SimpleNamespace(

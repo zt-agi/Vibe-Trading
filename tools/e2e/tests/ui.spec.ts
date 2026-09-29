@@ -1,6 +1,6 @@
 // ZT add-on: UI QA gate. Every main route opens through the one-click sign-in
 // (#vt_key), renders without uncaught page errors or console errors, and has
-// no horizontal overflow at the project's width (390 and 1366). /zt is checked
+// no horizontal overflow at every supported width (390, 500, 800, 1024, 1366, 1680). /zt is checked
 // in depth: pre-flight panel, report list, one report in the viewer, snapshot
 // cards. Screenshots land in $VT_E2E_OUTPUT/screenshots/<project>/.
 import { mkdirSync } from "node:fs";
@@ -28,24 +28,11 @@ const ROUTES: { path: string; name: string }[] = [
   { path: "/runtime", name: "runtime" },
 ];
 
-const extraIgnore = process.env.VT_E2E_IGNORE_CONSOLE ? new RegExp(process.env.VT_E2E_IGNORE_CONSOLE) : null;
 // VT's run page (RunDetail.tsx) asks for the run's optional strategy files with
 // api.getRunCode(...).catch(() => ({})): a run without a code folder answers 404,
 // which the page handles, but the browser still logs the failed resource load.
 // That 404 is VT's contract for such runs (manual analyses, swarm-only runs), not a UI error.
 const OPTIONAL_RUN_FILE_404 = /status of 404 \(Not Found\) \([^)]*\/runs\/[^/)]+\/(?:code|pine)\)$/;
-const STRICT = process.env.VT_E2E_STRICT === "1";
-
-// Vibe-Trading's own pages that overflow a 390 px viewport (found by this suite,
-// 2026-09-29). They are upstream pages, not ZT add-ons, so the gate reports them
-// as "known-issue" annotations instead of failing; VT_E2E_STRICT=1 fails them.
-// A listed route that no longer overflows is annotated "known-issue-fixed".
-const KNOWN_NARROW_OVERFLOW: Record<string, string> = {
-  "/options": "Options Lab: the strategy builder and the option chain tables are wider than the pane",
-  "/correlation": "Correlation Matrix: the Window (days) button group does not wrap",
-  "/runtime": "Runtime: the broker connection cards are wider than the pane",
-};
-
 function redact(text: string): string {
   if (!KEY) return text;
   return text.split(encodeURIComponent(KEY)).join("<api-key>").split(KEY).join("<api-key>");
@@ -62,7 +49,6 @@ function watch(page: Page): Watch {
     if (message.type() !== "error") return;
     const where = message.location().url ? ` (${message.location().url})` : "";
     const line = redact(`${text}${where}`);
-    if (extraIgnore?.test(line)) return;
     if (OPTIONAL_RUN_FILE_404.test(line)) return;
     seen.consoleErrors.push(line);
   });
@@ -136,17 +122,7 @@ async function expectClean(page: Page, seen: Watch, label: string, info?: TestIn
   expect.soft(seen.consoleErrors, `${label}: console errors`).toEqual([]);
   const overflow = await horizontalOverflow(page);
   const message = `${label}: horizontal overflow of the ${overflow.pane} (${overflow.width}px): ${overflow.offenders.join("; ")}`;
-  const known = info && info.project.name === "w390" ? KNOWN_NARROW_OVERFLOW[label] : undefined;
-  if (known && !STRICT) {
-    if (overflow.scroll > overflow.width + 1) {
-      info!.annotations.push({ type: "known-issue", description: `${known}. ${message}` });
-      console.log(`[known-issue] ${message}`);
-    } else {
-      info!.annotations.push({ type: "known-issue-fixed", description: `${label} no longer overflows; remove it from KNOWN_NARROW_OVERFLOW` });
-    }
-  } else {
-    expect.soft(overflow.scroll, message).toBeLessThanOrEqual(overflow.width + 1);
-  }
+  expect.soft(overflow.scroll, message).toBeLessThanOrEqual(overflow.width + 1);
   expect.soft(page.url(), `${label}: the key left the URL`).not.toContain("vt_key");
   expect(seen.allConsole.some((text) => text.includes(KEY)), `${label}: the key was logged`).toBe(false);
 }
@@ -234,6 +210,50 @@ test.describe("main routes", () => {
 });
 
 test.describe("/zt in depth", () => {
+  test("native wheel and keyboard reach the bottom and return", async ({ page }, info) => {
+    await openSignedIn(page, "/runtime");
+    await settle(page);
+    const main = page.locator("main").first();
+    const geometry = await main.evaluate(el => ({ height: el.clientHeight, total: el.scrollHeight }));
+    test.skip(geometry.total <= geometry.height + 1, "page fits this viewport");
+    const box = await main.boundingBox();
+    expect(box).not.toBeNull();
+    await page.mouse.move(box!.x + box!.width / 2, box!.y + box!.height / 2);
+    const top = await main.evaluate(el => el.scrollTop);
+    await page.mouse.wheel(0, geometry.total);
+    await expect.poll(() => main.evaluate(el => el.scrollTop)).toBeGreaterThan(top);
+    await expect.poll(() => main.evaluate(el => el.scrollTop + el.clientHeight)).toBeGreaterThanOrEqual(geometry.total - 2);
+    await page.mouse.wheel(0, -geometry.total);
+    await expect.poll(() => main.evaluate(el => el.scrollTop)).toBeLessThanOrEqual(2);
+    // Use VT's existing skip link, the same ordinary keyboard path as the user.
+    await page.reload();
+    await settle(page);
+    await page.keyboard.press("Tab");
+    await page.keyboard.press("Enter");
+    expect(await main.evaluate(el => el === document.activeElement)).toBe(true);
+    await page.keyboard.press("PageDown");
+    await expect.poll(() => main.evaluate(el => el.scrollTop)).toBeGreaterThan(0);
+    for (let step = 0; step < Math.ceil(geometry.total / geometry.height) + 1; step++) await page.keyboard.press("PageDown");
+    await expect.poll(() => main.evaluate(el => el.scrollTop + el.clientHeight)).toBeGreaterThanOrEqual(geometry.total - 2);
+    await screenshot(page, info, "runtime-bottom");
+    for (let step = 0; step < Math.ceil(geometry.total / geometry.height) + 1; step++) await page.keyboard.press("PageUp");
+    await expect.poll(() => main.evaluate(el => el.scrollTop)).toBeLessThanOrEqual(2);
+  });
+
+  test("important add-on and runtime controls have usable targets", async ({ page }) => {
+    for (const route of ["/runtime", "/zt"]) {
+      await openSignedIn(page, route);
+      await settle(page);
+      const controls = page.locator("main button, main select");
+      for (const control of await controls.all()) {
+        if (!await control.isVisible()) continue;
+        const box = await control.boundingBox();
+        expect(box?.width, `${route}: ${await control.innerText()} width`).toBeGreaterThanOrEqual(44);
+        expect(box?.height, `${route}: ${await control.innerText()} height`).toBeGreaterThanOrEqual(44);
+      }
+    }
+  });
+
   test("pre-flight panel, report list, report viewer and snapshot cards", async ({ page }, info) => {
     const seen = watch(page);
     await openSignedIn(page, "/zt");

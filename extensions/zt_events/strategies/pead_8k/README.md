@@ -54,3 +54,11 @@ Options: `--tickers`, `--hold`, `--short-bottom`, `--slot-weight` (default
 The lake's price history is a backfill, so historical runs use
 `--pit-mode snapshot --claim research` (the default); `formation` with a
 `tradeable` claim is only for windows whose bars were captured daily.
+# Entry information eligibility
+
+Tradeable builds require both the event and SUE of every traded entry to be
+`TRUE_PIT` or `OBSERVED_PIT`. Unknown, missing, `NON_PIT` and reconstructed inputs
+fail before run files are written. Pending, duplicate, late and untraded rows
+remain classified research records and do not block an unrelated eligible entry.
+Candidate scans use the same entry check. Exits remain available for already-held
+positions because refusing an entry input must not prevent reducing exposure.

@@ -95,6 +95,27 @@ FROM (
 ALL_CHECKS = tuple(f"A{i}" for i in range(1, 12))
 
 
+@pytest.mark.parametrize("day, close", [("2025-11-28", "18:00"), ("2025-07-03", "17:00"),
+                                      ("2025-12-24", "18:00")])
+@pytest.mark.parametrize("minutes", [-5, 5])
+def test_loader_uses_actual_early_session_close(day, close, minutes):
+    con = _store()
+    try:
+        _security(con, 1, "NVDA")
+        known = pd.Timestamp(f"{day}T{close}:00") + pd.Timedelta(minutes=minutes)
+        _bar(con, 1, pd.Timestamp(day).date(), 100.0, known.to_pydatetime())
+        config = _config(run_asof_utc="2026-01-01T00:00:00Z")
+        config.update(start_date=day, end_date=day)
+        loader = _loader(con, config)
+        if minutes < 0:
+            with pytest.raises(pl.PitDataError, match="before its session closed"):
+                loader.fetch(["NVDA.US"], day, day)
+        else:
+            assert len(loader.fetch(["NVDA.US"], day, day)["NVDA.US"]) == 1
+    finally:
+        con.close()
+
+
 class MemoryBackend:
     """In-memory warehouse with a synthetic PASS audit receipt."""
 
