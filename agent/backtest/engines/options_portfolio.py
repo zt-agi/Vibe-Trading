@@ -641,7 +641,11 @@ def run_options_backtest(
         metrics,
         data_sources=[str(getattr(loader, "name", config.get("source", "")))],
         strategy_path=run_dir / "code" / "signal_engine.py",
-        warnings=config.get("content_filter_warnings") or None,
+        warnings=[  # ZT add-on: the unfinished-bar note
+            *(config.get("content_filter_warnings") or []),
+            *([config["_run_card_unfinished_warning"]]
+              if config.get("_run_card_unfinished_warning") else []),
+        ] or None,
         tool_traces=[
             {
                 "tool": "backtest",

@@ -76,6 +76,9 @@ class DataFetchResult:
     # ZT add-on: point-in-time provenance from a loader bound to the run's
     # ``pit`` block (pitdb), for the run card; None for every other source.
     pit: Dict[str, Any] | None = None
+    # ZT add-on: bars dropped because their session had not closed yet
+    # (backtest.asof_guard.drop_unfinished_bars), one note per code.
+    unfinished_notes: tuple = ()
 
 
 class BacktestConfigSchema(BaseModel):
@@ -1289,6 +1292,10 @@ def main(run_dir: Path) -> None:
         config["_run_card_caliber_warning"] = fetch_result.caliber_warning
     if fetch_result.pit:  # ZT add-on: the run card's `pit` block
         config["_run_card_pit"] = fetch_result.pit
+    if fetch_result.unfinished_notes:  # ZT add-on
+        config["_run_card_unfinished_warning"] = (
+            "unfinished bars dropped: " + "; ".join(fetch_result.unfinished_notes)
+        )
     interval = config.get("interval", "1D")
     if not data_map:
         print(json.dumps({"error": "No data fetched"}))
@@ -1922,9 +1929,16 @@ def fetch_data_map(config: dict) -> DataFetchResult:
                 f"incomplete data for source={primary_source}; missing symbols: {missing}"
             )
 
+    # ZT add-on: a bar whose session is still running (end_date today) is not
+    # a finished bar; drop it before it can become a signal input or a mark.
+    from backtest import asof_guard
+
+    finished, unfinished_notes = asof_guard.drop_unfinished_bars(
+        _sanitize_data_map(data_map), interval
+    )
     data_map = {
         code: resample_bars(frame, requested_interval)
-        for code, frame in _sanitize_data_map(data_map).items()
+        for code, frame in finished.items()
     }
     caliber_stamps = {
         code: stamp for code, stamp in caliber_stamps.items() if code in data_map
@@ -1954,6 +1968,7 @@ def fetch_data_map(config: dict) -> DataFetchResult:
         effective_sources=used_sources,
         caliber_warning=caliber_warning,
         pit=provenance() if callable(provenance) else None,
+        unfinished_notes=tuple(unfinished_notes),
     )
 
 

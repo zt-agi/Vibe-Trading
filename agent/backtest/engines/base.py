@@ -1204,6 +1204,8 @@ class BaseEngine(ABC):
             card_warnings.append(config["_run_card_caliber_warning"])
         if config.get("_run_card_annualisation_warning"):
             card_warnings.append(config["_run_card_annualisation_warning"])
+        if config.get("_run_card_unfinished_warning"):  # ZT add-on
+            card_warnings.append(config["_run_card_unfinished_warning"])
         from backtest.run_card import write_run_card
         write_run_card(
             run_dir,
