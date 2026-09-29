@@ -19,6 +19,7 @@ the per-leg vol every pricing site must agree on.
 """
 
 import json
+import logging
 import math
 import sys
 from datetime import datetime, timezone
@@ -31,6 +32,19 @@ import pandas as pd
 from backtest.engines.base import evaluation_start_index
 from backtest.metrics import effective_bars_per_year
 from src.quantlib.options import bs_greeks, bs_price, normalise_option_type
+
+logger = logging.getLogger(__name__)
+
+#: ZT add-on: when a signal fills (``backtest.asof_guard.FILL_TIMINGS``): at
+#: the close of the underlying's next bar; ``same_day_fill`` makes it the
+#: close of the bar the signal is dated on.
+FILL_TIMING = "next_close"
+
+
+def options_fill_timing(config: Dict[str, Any]) -> str:
+    """ZT add-on: the fill timing a run's ``options_config`` selects."""
+    options_cfg = config.get("options_config") or {}
+    return "same_close" if options_cfg.get("same_day_fill", False) else FILL_TIMING
 
 
 # --- Historical volatility ---
@@ -260,11 +274,14 @@ def run_options_backtest(
     warmup_end = evaluation_start_index(config, pd.DatetimeIndex(full_dates))
     dates = full_dates[warmup_end:]
 
-    # Index signals by date
-    signal_by_date: Dict[str, List[Dict[str, Any]]] = {}
-    for sig in signals:
-        d = sig.get("date", "")
-        signal_by_date.setdefault(d, []).append(sig)
+    # ZT add-on: the bar each signal fills on (see _schedule_signals).
+    scheduled = _schedule_signals(
+        signals,
+        data_map,
+        full_dates,
+        same_day_fill=same_day_fill,
+        default_underlying=codes[0] if codes else "",
+    )
 
     # Day-by-day simulation
     cash = float(initial_cash)
@@ -300,8 +317,7 @@ def run_options_backtest(
             ) * abs(pos.qty) * contract_multiplier
         return total
 
-    for idx, current_date in enumerate(dates):
-        full_idx = idx + warmup_end
+    for current_date in dates:
         ts = pd.Timestamp(current_date)
         date_str = str(ts.date()) if hasattr(ts, "date") else str(ts)
         # Signals are dated the bar they were computed on and priced/filled on
@@ -312,13 +328,9 @@ def run_options_backtest(
         # fills on the first evaluated bar, matching the equity convention;
         # only signals dated before the very first loaded bar can never fill.
         # Set options_config.same_day_fill to price a signal on its own date.
-        if same_day_fill:
-            signal_date = date_str
-        elif full_idx > 0:
-            prev = pd.Timestamp(full_dates[full_idx - 1])
-            signal_date = str(prev.date()) if hasattr(prev, "date") else str(prev)
-        else:
-            signal_date = None
+        # ZT add-on: "the next bar" is the underlying's own next bar with a
+        # usable close (_schedule_signals), so a gap never prices a fill at the
+        # last close, and a weekend- or holiday-dated signal is not dropped.
 
         # 1. Get underlying price and IV for the current day
         spot_prices: Dict[str, float] = {}
@@ -378,7 +390,7 @@ def run_options_backtest(
                     positions.remove(pos)
 
         # 3. Execute the prior bar's signals at today's prices
-        day_signals = signal_by_date.get(signal_date, []) if signal_date else []
+        day_signals = scheduled.get(ts, [])
         for sig in day_signals:
             action = sig.get("action", "")
             legs = sig.get("legs", [])
@@ -647,6 +659,82 @@ def run_options_backtest(
 
 
 # ─── Helpers ─────────────────────────────────────────────────────────────────
+
+
+def _schedule_signals(
+    signals: List[Dict[str, Any]],
+    data_map: Dict[str, pd.DataFrame],
+    full_dates: List[Any],
+    *,
+    same_day_fill: bool,
+    default_underlying: str,
+) -> Dict[pd.Timestamp, List[Dict[str, Any]]]:
+    """ZT add-on: the bar each signal fills on, keyed by that bar's stamp.
+
+    A signal fills on its underlying's first bar with a finite, positive
+    close strictly after the day it is dated (on or after it with
+    ``same_day_fill``). With a gap-free underlying that is the next bar, as
+    before; but a missing or unusable bar now defers the fill instead of
+    pricing it at the last close -- for a signal dated D that was D's own
+    close -- and a signal dated on a weekend or holiday rolls to the next
+    session instead of never matching a bar. Signals dated before the first
+    loaded bar still never fill, and one with no later usable bar stays
+    pending. Order within a bar follows the signal list.
+
+    Args:
+        signals: Trade instructions from the strategy.
+        data_map: Underlying bars.
+        full_dates: Every loaded bar stamp, sorted.
+        same_day_fill: Fill on the signal's own date when it has a bar.
+        default_underlying: Underlying of a signal that names none.
+
+    Returns:
+        ``{bar stamp: [signals filling on it]}``.
+    """
+    scheduled: Dict[pd.Timestamp, List[Dict[str, Any]]] = {}
+    if not full_dates:
+        return scheduled
+    first_day = pd.Timestamp(full_dates[0])
+    first_day = (first_day.tz_localize(None) if first_day.tzinfo else first_day).normalize()
+    usable: Dict[str, tuple] = {}
+    unified = pd.DatetimeIndex(full_dates)
+    unified_days = (unified.tz_localize(None) if unified.tz is not None else unified).normalize()
+
+    for sig in signals:
+        try:
+            when = pd.Timestamp(sig.get("date", ""))
+        except (TypeError, ValueError):
+            when = pd.NaT
+        if pd.isna(when):
+            logger.warning("options signal without a readable date skipped: %r", sig.get("date"))
+            continue
+        day = (when.tz_localize(None) if when.tzinfo else when).normalize()
+        if day < first_day:
+            continue
+        underlying = sig.get("underlying", default_underlying)
+        if underlying not in usable:
+            frame = data_map.get(underlying)
+            if frame is None or "close" not in frame.columns:
+                logger.warning("options signal for %r skipped: no bars for that underlying", underlying)
+                usable[underlying] = (pd.DatetimeIndex([]), pd.DatetimeIndex([]))
+            else:
+                close = pd.to_numeric(frame["close"], errors="coerce").to_numpy(dtype=float)
+                stamps = pd.DatetimeIndex(frame.index[np.isfinite(close) & (close > 0)]).sort_values()
+                days = (stamps.tz_localize(None) if stamps.tz is not None else stamps).normalize()
+                usable[underlying] = (stamps, days)
+        stamps, days = usable[underlying]
+        pos = days.searchsorted(day, side="left" if same_day_fill else "right")
+        if pos >= len(stamps):
+            continue
+        fill = pd.Timestamp(stamps[pos])
+        nominal = unified_days.searchsorted(day, side="left" if same_day_fill else "right")
+        if nominal < len(unified) and pd.Timestamp(unified[nominal]) != fill:
+            logger.warning(
+                "options signal dated %s for %s fills on %s, the underlying's next usable bar",
+                day.date(), underlying, fill.date(),
+            )
+        scheduled.setdefault(fill, []).append(sig)
+    return scheduled
 
 
 def _find_matching_position(
