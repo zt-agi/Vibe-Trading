@@ -24,6 +24,15 @@ The simulator keeps its own literal check as the last line of defence.
 
 The scenario tree is parsed here with the same rules as ``sim/model.py`` so
 the MCP server does not import project code to validate a fork.
+
+ZT add-on (2026-09-29): a scenario may add keys the simulator ignores -- a
+top-level ``actor_roles`` mapping (actor -> role_class, sub_role, template)
+and a ``direction`` on an action (long, reduce, neutral, short, cover). The
+fork view shows them only when present, so older packets keep their bytes.
+``validate_fork`` takes optional rules from role_templates.py and blind
+packets: replacement citation ids (series aliases), actions a role template
+forbids (each at most FORBIDDEN_FLOOR, uniform measured over the rest) and
+states whose memo ``checklist`` is kept.
 """
 from __future__ import annotations
 
@@ -175,12 +184,22 @@ def action_discussed(text: str, action: str) -> bool:
 # --------------------------------------------------------------------------
 
 
+#: Position directions an action may declare (``direction:`` on the action in
+#: the scenario YAML). ``reduce`` lowers a long without going short; ``cover``
+#: lowers a short. A long-only role template forbids ``short`` and ``cover``.
+DIRECTIONS = ("long", "reduce", "neutral", "short", "cover")
+_ROLE_KEYS = ("role_class", "sub_role", "template")
+_TEMPLATE_ID_RE = re.compile(r"^[a-z][a-z0-9_]{2,63}$")
+
+
 @dataclass
 class StateSpec:
     state_key: str
     actor: str
     #: action -> ("state", child_state_key) or ("outcome", outcome_name)
     actions: dict[str, tuple[str, str]] = field(default_factory=dict)
+    #: action -> declared direction (only actions whose YAML sets ``direction``)
+    directions: dict[str, str] = field(default_factory=dict)
 
 
 @dataclass
@@ -190,26 +209,39 @@ class ScenarioTree:
     rewards: dict[str, float]
     headline_outcomes: list[str]
     states: dict[str, StateSpec]
+    #: Optional ``actor_roles`` binding: actor -> {role_class, sub_role?, template?}.
+    #: The simulator (sim/model.py) ignores the key; role forks and the
+    #: role-template rules read it.
+    actor_roles: dict[str, dict] = field(default_factory=dict)
 
     @property
     def outcomes(self) -> list[str]:
         return sorted(self.rewards)
 
     def fork_view(self) -> list[dict]:
-        """Decision states as a role fork may see them: no outcome labels."""
-        return [
-            {
-                "state_key": spec.state_key,
-                "actor": spec.actor,
-                "actions": [
-                    {"action": action, "leads_to_state": target}
-                    if kind == "state"
-                    else {"action": action, "terminal": True}
-                    for action, (kind, target) in spec.actions.items()
-                ],
-            }
-            for spec in self.states.values()
-        ]
+        """Decision states as a role fork may see them: no outcome labels.
+
+        A scenario without ``actor_roles`` or action ``direction`` renders
+        exactly as before (packets frozen earlier keep their bytes).
+        """
+        view = []
+        for spec in self.states.values():
+            actions = []
+            for action, (kind, target) in spec.actions.items():
+                entry = ({"action": action, "leads_to_state": target} if kind == "state"
+                         else {"action": action, "terminal": True})
+                if action in spec.directions:
+                    entry["direction"] = spec.directions[action]
+                actions.append(entry)
+            state = {"state_key": spec.state_key, "actor": spec.actor, "actions": actions}
+            role = self.actor_roles.get(spec.actor)
+            if role:
+                for key, shown in (("role_class", "role_class"), ("sub_role", "sub_role"),
+                                   ("template", "role_template")):
+                    if role.get(key):
+                        state[shown] = role[key]
+            view.append(state)
+        return view
 
 
 def _build(spec: dict, state_key: str, states: dict[str, StateSpec]) -> None:
@@ -219,6 +251,8 @@ def _build(spec: dict, state_key: str, states: dict[str, StateSpec]) -> None:
     states[state_key] = node  # pre-order: the fork view reads root first
     for action, action_spec in spec["actions"].items():
         child_key = f"{state_key}/{action}" if state_key else str(action)
+        if not isinstance(action_spec, dict):
+            raise ValueError(f"action {child_key!r} needs 'outcome' or 'child'")
         if "outcome" in action_spec:
             node.actions[str(action)] = ("outcome", str(action_spec["outcome"]))
         elif "child" in action_spec:
@@ -226,6 +260,35 @@ def _build(spec: dict, state_key: str, states: dict[str, StateSpec]) -> None:
             _build(action_spec["child"], child_key, states)
         else:
             raise ValueError(f"action {child_key!r} needs 'outcome' or 'child'")
+        if "direction" in action_spec:
+            direction = str(action_spec["direction"]).strip().lower()
+            if direction not in DIRECTIONS:
+                raise ValueError(f"action {child_key!r}: direction must be one of {DIRECTIONS}")
+            node.directions[str(action)] = direction
+
+
+def _parse_actor_roles(raw, states: dict[str, StateSpec]) -> dict[str, dict]:
+    """Validate the optional ``actor_roles`` mapping against the tree's actors."""
+    if raw in (None, {}):
+        return {}
+    if not isinstance(raw, dict):
+        raise ValueError("actor_roles must map actor ids to {role_class, sub_role?, template?}")
+    actors = {spec.actor for spec in states.values()}
+    roles: dict[str, dict] = {}
+    for actor, entry in raw.items():
+        actor = str(actor)
+        if actor not in actors:
+            raise ValueError(f"actor_roles names {actor!r}, which is no actor of the tree")
+        if not isinstance(entry, dict) or not str(entry.get("role_class") or "").strip():
+            raise ValueError(f"actor_roles[{actor!r}] needs a role_class")
+        unknown = sorted(set(entry) - set(_ROLE_KEYS))
+        if unknown:
+            raise ValueError(f"actor_roles[{actor!r}] has unknown keys {unknown}")
+        role = {key: str(entry[key]).strip() for key in _ROLE_KEYS if entry.get(key) not in (None, "")}
+        if "template" in role and not _TEMPLATE_ID_RE.match(role["template"]):
+            raise ValueError(f"actor_roles[{actor!r}].template must be a template id like value_checklist")
+        roles[actor] = role
+    return roles
 
 
 def parse_scenario(text: str) -> ScenarioTree:
@@ -242,6 +305,7 @@ def parse_scenario(text: str) -> ScenarioTree:
         rewards=rewards,
         headline_outcomes=[str(o) for o in spec.get("headline_outcomes", [])],
         states=states,
+        actor_roles=_parse_actor_roles(spec.get("actor_roles"), states),
     )
 
 
@@ -261,6 +325,8 @@ def packet_citation_ids(packet: dict) -> dict[str, str]:
         ids[item["evidence_id"].casefold()] = item["evidence_id"]
         ids[str(item["series_id"]).casefold()] = item["evidence_id"]
     for item in packet.get("admitted_prices", []):
+        ids[item["evidence_id"].casefold()] = item["evidence_id"]
+    for item in packet.get("derived_style_scores", []):
         ids[item["evidence_id"].casefold()] = item["evidence_id"]
     for item in packet.get("memos", []):
         ids[item["memo_id"].casefold()] = item["memo_id"]
@@ -306,7 +372,16 @@ def _is_probability(value) -> bool:
     return isinstance(value, (int, float)) and not isinstance(value, bool) and math.isfinite(value)
 
 
-def validate_fork(fork: dict, tree: ScenarioTree, packet: dict | None = None) -> dict:
+#: The smallest admissible entry: the simulator needs every propensity
+#: strictly above 0, so an action a role template forbids carries exactly this
+#: much (numerically no mass) rather than zero.
+FORBIDDEN_FLOOR = 1e-6
+
+
+def validate_fork(fork: dict, tree: ScenarioTree, packet: dict | None = None, *,
+                  citation_ids: dict[str, str] | None = None,
+                  forbidden: dict[str, set[str]] | None = None,
+                  keep_checklist: set[str] | frozenset[str] = frozenset()) -> dict:
     """Validate one temperament fork; return it in canonical scenario order.
 
     Args:
@@ -314,11 +389,19 @@ def validate_fork(fork: dict, tree: ScenarioTree, packet: dict | None = None) ->
         tree: The scenario the fork answers.
         packet: The frozen evidence packet, or None to skip citation rules
             (the legacy path-based simulator inputs have no packet).
+        citation_ids: Citable ids -> evidence id, replacing the packet's own
+            (a blind packet adds its series aliases).
+        forbidden: state_key -> actions a role template's direction
+            permissions forbid there; each may carry at most FORBIDDEN_FLOOR,
+            and "uniform" for an uncited state means uniform over the rest.
+        keep_checklist: states whose memo ``checklist`` object is kept in the
+            canonical fork (checked by role_templates, not here).
 
     Raises:
         ForkRejected: With every failed rule, so one resubmission can fix all.
     """
     problems: list[str] = []
+    forbidden = forbidden or {}
     temperament = str(fork.get("temperament") or "").strip()
     if not _TEMPERAMENT_RE.match(temperament):
         problems.append("temperament must be 3-80 characters of letters, digits, '_' or '-'")
@@ -336,7 +419,10 @@ def validate_fork(fork: dict, tree: ScenarioTree, packet: dict | None = None) ->
             + (f"; not in the scenario {extra}" if extra else "")
         )
         raise ForkRejected(problems)
-    ids = packet_citation_ids(packet) if packet is not None else {}
+    if citation_ids is not None:
+        ids = dict(citation_ids)
+    else:
+        ids = packet_citation_ids(packet) if packet is not None else {}
     absence = packet_absence_ids(packet) if packet is not None else set()
     canonical_memos: dict[str, dict] = {}
     canonical_props: dict[str, dict] = {}
@@ -378,6 +464,13 @@ def validate_fork(fork: dict, tree: ScenarioTree, packet: dict | None = None) ->
             continue
         if not math.isclose(sum(values), 1.0, abs_tol=SUM_TOLERANCE):
             problems.append(f"{where}: probabilities do not sum to one ({sum(values)!r})")
+        blocked = [a for a in spec.actions if a in forbidden.get(state_key, ())]
+        over = [a for a in blocked if dist[a] > FORBIDDEN_FLOOR * (1 + 1e-9)]
+        if over:
+            problems.append(
+                f"{where}: the role template's direction permissions forbid mass on {over}; "
+                f"give each exactly {FORBIDDEN_FLOOR} (the smallest admissible entry)")
+        permitted = [a for a in spec.actions if a not in blocked] or list(spec.actions)
         if packet is not None:
             resolved = []
             unresolved = []
@@ -395,8 +488,8 @@ def validate_fork(fork: dict, tree: ScenarioTree, packet: dict | None = None) ->
                     "cite evidence ids, series_id values or memo ids from the packet"
                 )
             if not resolved:
-                uniform = 1.0 / len(values)
-                spread = max(abs(p - uniform) for p in values)
+                uniform = 1.0 / len(permitted)
+                spread = max(abs(dist[a] - uniform) for a in permitted)
                 if not missing_obs:
                     problems.append(
                         f"{where}: no packet evidence cited; name the missing observable "
@@ -413,14 +506,22 @@ def validate_fork(fork: dict, tree: ScenarioTree, packet: dict | None = None) ->
             "evidence": [str(item) for item in evidence],
             "missing_observables": [str(item) for item in missing_obs],
         }
+        if state_key in keep_checklist and isinstance(memo.get("checklist"), dict):
+            canonical_memos[state_key]["checklist"] = {
+                str(key): str(value) for key, value in sorted(memo["checklist"].items())}
         canonical_props[state_key] = {action: float(dist[action]) for action in spec.actions}
     if problems:
         raise ForkRejected(problems)
     return {"temperament": temperament, "memos": canonical_memos, "propensities": canonical_props}
 
 
-def validate_fork_set(forks: list[dict], tree: ScenarioTree, packet: dict | None = None) -> list[dict]:
-    """Whole-ensemble rules: at least three forks with unique temperaments."""
+def validate_fork_set(forks: list[dict], tree: ScenarioTree, packet: dict | None = None,
+                      **rules) -> list[dict]:
+    """Whole-ensemble rules: at least three forks with unique temperaments.
+
+    ``rules`` are validate_fork's keyword rules (citation_ids, forbidden,
+    keep_checklist), applied to every fork.
+    """
     problems: list[str] = []
     if len(forks) < MIN_FORKS:
         problems.append(f"at least {MIN_FORKS} temperament forks are required; have {len(forks)}")
@@ -431,7 +532,7 @@ def validate_fork_set(forks: list[dict], tree: ScenarioTree, packet: dict | None
     accepted = []
     for fork in forks:
         try:
-            accepted.append(validate_fork(fork, tree, packet))
+            accepted.append(validate_fork(fork, tree, packet, **rules))
         except ForkRejected as rejected:
             problems.extend(rejected.problems)
     if problems:
