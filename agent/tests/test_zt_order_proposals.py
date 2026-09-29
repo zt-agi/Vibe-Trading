@@ -239,7 +239,7 @@ def test_ledger_records_approver_reason_and_hash(engine, home) -> None:
 
     events = core.ledger_events(proposal["id"])
     assert [e["event"] for e in events] == ["created", "transition", "transition", "transition"]
-    assert events[0]["actor"] == "agent" and events[0]["to"] == "PENDING"
+    assert (events[0]["from"], events[0]["to"], events[0]["actor"]) == (None, "PENDING", "agent")
     approved = events[1]
     assert approved["to"] == "APPROVED" and approved["actor"] == "local-user"
     assert approved["reason"] == "approved by the human operator"

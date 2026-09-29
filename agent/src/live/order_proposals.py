@@ -274,7 +274,16 @@ def write_json_atomic(path: Path, payload: Any) -> None:
             os.chmod(temporary, 0o600)
         except OSError:
             pass
-        os.replace(temporary, path)
+        for attempt in range(40):
+            try:
+                os.replace(temporary, path)
+                break
+            except PermissionError:
+                # Windows refuses to replace a file another process has open
+                # (the MCP server or the Web UI reading it); retry briefly.
+                if attempt == 39:
+                    raise
+                time.sleep(0.05)
     finally:
         if os.path.exists(temporary):
             os.unlink(temporary)
@@ -1326,10 +1335,7 @@ def create_proposal(*, broker: str | None = ZT_PAPER, orders: Sequence[Mapping[s
     }
     json.loads(canonical_json({k: proposal[k] for k in HASHED_FIELDS}))  # refuses NaN/unserializable
     proposal["content_hash"] = content_hash(proposal)
-    proposal["status"] = PENDING
-    proposal["transitions"] = []
-    proposal["approval"] = None
-    proposal["submission"] = None
+    proposal.update({"status": None, "transitions": [], "approval": None, "submission": None})
     with _proposal_lock(proposal["id"]):
         _record_transition(proposal, PENDING, actor=str(origin_map.get("actor") or "agent"),
                            reason="proposed", event="created",
@@ -2001,7 +2007,7 @@ def _persist_raw(*, descriptor: Mapping[str, Any], orders: list[dict[str, Any]],
         "orders": orders, "decision_record": decision, "validation": validation, "route": dict(route),
     }
     proposal["content_hash"] = content_hash(proposal)
-    proposal.update({"status": PENDING, "transitions": [], "approval": None, "submission": None})
+    proposal.update({"status": None, "transitions": [], "approval": None, "submission": None})
     with _proposal_lock(proposal["id"]):
         _record_transition(proposal, PENDING, actor=str(origin.get("actor") or "agent"), reason="proposed",
                            event="created", detail={"broker": descriptor.get("profile_id"), "orders": len(orders),
