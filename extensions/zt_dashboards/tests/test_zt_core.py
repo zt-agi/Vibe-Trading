@@ -362,11 +362,30 @@ def test_project_reports_answers_from_stat_until_a_report_is_read(core, project,
             reads.append(self.name)
         return real_open(self, *args, **kwargs)
 
+    lookups = []
+    real_stat, real_resolve = Path.stat, Path.resolve
+
+    def stat_spy(self, *args, **kwargs):
+        if self.suffix.lower() in (".html", ".htm"):
+            lookups.append(self.name)
+        return real_stat(self, *args, **kwargs)
+
+    def resolve_spy(self, *args, **kwargs):
+        if self.suffix.lower() in (".html", ".htm"):
+            lookups.append(self.name)
+        return real_resolve(self, *args, **kwargs)
+
     with monkeypatch.context() as patched:
         patched.setattr(Path, "read_bytes", spy)
         patched.setattr(Path, "open", open_spy)
+        patched.setattr(Path, "stat", stat_spy)
+        patched.setattr(Path, "resolve", resolve_spy)
         out = core.project_reports(now=NOW, warm=False)
     assert reads == []
+    # Root dashboards come from one directory listing; only hub entries that are not
+    # in the root folder (missing ones here) are looked up one by one.
+    root_files = {p.name for p in project.iterdir() if p.suffix.lower() in (".html", ".htm")}
+    assert root_files and not (set(lookups) & root_files)
     reports = {r["id"]: r for r in out["data"]["reports"]}
     top25, lane = reports["ALPHA_MONITOR_TOP25.html"], reports["ASM_PHASE2_LANE_OPS.html"]
     assert top25["sha256"] is None and top25["bytes"] > 0 and top25["viewable"] is True

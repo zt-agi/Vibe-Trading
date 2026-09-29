@@ -37,6 +37,7 @@ import re
 import threading
 from datetime import date, datetime, time, timedelta, timezone
 from pathlib import Path, PurePosixPath
+from stat import S_ISREG
 from typing import Any, Iterable
 
 PROJECT_ENV = "INVESTMENT_AI_PROJECT_ROOT"
@@ -1193,15 +1194,6 @@ def _title_from_head(head: bytes) -> str | None:
     return title[:200] or None
 
 
-def _html_title(path: Path) -> str | None:
-    try:
-        with path.open("rb") as handle:
-            head = handle.read(65536)
-    except OSError:
-        return None
-    return _title_from_head(head)
-
-
 # ZT add-on (2026-09-29): report metadata cache. The project lives on Google Drive for
 # desktop, where reading every dashboard to hash it (and to find its <title>) made
 # /zt/reports take a minute on PC1 before the list could render. The list now answers
@@ -1215,6 +1207,15 @@ _REPORT_WARMUP: threading.Thread | None = None
 
 def _report_key(path: Path, stat: os.stat_result) -> tuple[str, int, int]:
     return (str(path), int(stat.st_size), int(stat.st_mtime_ns))
+
+
+def _regular_file_stat(path: Path) -> os.stat_result | None:
+    """One stat() call: the stat of a regular file, else None."""
+    try:
+        stat = path.stat()
+    except OSError:
+        return None
+    return stat if S_ISREG(stat.st_mode) else None
 
 
 def _remember_report(key: tuple[str, int, int], data: bytes) -> dict[str, Any]:
@@ -1231,8 +1232,8 @@ def warm_report_cache(root: Path | None = None) -> int:
     for entry in report_index(root).values():
         path: Path = entry["_file"]
         try:
-            stat = path.stat()
-            if not path.is_file() or stat.st_size > MAX_READ_BYTES:
+            stat = entry.get("_stat") or _regular_file_stat(path)
+            if stat is None or stat.st_size > MAX_READ_BYTES:
                 continue
             key = _report_key(path, stat)
             if key in _REPORT_META:
@@ -1274,16 +1275,41 @@ def _hub_items(root: Path) -> tuple[Blob | None, dict[str, Any], list[dict[str, 
     return blob, status, items
 
 
+def _root_listing(root: Path) -> dict[str, tuple[Path, os.stat_result | None]]:
+    """Root entries from one directory listing: name -> (path, stat of a regular file or None).
+
+    ZT add-on (2026-09-29): on Google Drive for desktop every stat(), is_file() or
+    resolve() of a file costs ~0.15 s, which made /zt/reports take 40-60 s for the
+    project's ~60 root dashboards. os.scandir returns the file type, size and mtime
+    with the listing on Windows; only links are resolved one by one.
+    """
+    listing: dict[str, tuple[Path, os.stat_result | None]] = {}
+    with os.scandir(root) as entries:
+        for entry in entries:
+            path = root / entry.name
+            try:
+                if entry.is_symlink():
+                    resolved = path.resolve()
+                    if resolved.parent != root:
+                        continue  # a link that leaves the root is not whitelisted
+                    listing[entry.name] = (resolved, _regular_file_stat(resolved))
+                elif entry.is_file():
+                    listing[entry.name] = (path, entry.stat())
+                else:
+                    listing[entry.name] = (path, None)
+            except OSError:
+                continue
+    return listing
+
+
 def report_index(root: Path) -> dict[str, dict[str, Any]]:
     """Whitelist: root-level *.html plus HTML files the hub lists; id = relative path."""
     index: dict[str, dict[str, Any]] = {}
-    for path in sorted(root.iterdir()):
-        if path.suffix.lower() in _HTML_SUFFIXES and path.is_file():
-            resolved = path.resolve()
-            if resolved.parent != root:
-                continue  # a link that leaves the root is not whitelisted
-            index[path.name] = {"id": path.name, "path": path.name, "origin": "root",
-                                "_file": resolved}
+    listing = _root_listing(root)
+    for name in sorted(listing):
+        path, stat = listing[name]
+        if Path(name).suffix.lower() in _HTML_SUFFIXES and stat is not None:
+            index[name] = {"id": name, "path": name, "origin": "root", "_file": path, "_stat": stat}
     _, _, items = _hub_items(root)
     for item in items:
         raw = str(item.get("path"))
@@ -1291,10 +1317,10 @@ def report_index(root: Path) -> dict[str, dict[str, Any]]:
             continue
         try:
             parts = _clean_parts(raw)
-            resolved = inside(root, raw)
+            rel = "/".join(parts)
+            resolved = index[rel]["_file"] if rel in index else inside(root, raw)
         except ValueError:
             continue
-        rel = "/".join(parts)
         entry = index.get(rel) or {"id": rel, "path": rel, "origin": "hub", "_file": resolved}
         if entry["origin"] == "root":
             entry["origin"] = "hub+root"
@@ -1322,11 +1348,11 @@ def project_reports(*, root: Path | None = None, now: datetime | None = None,
     pending = 0
     for entry in report_index(root).values():
         path: Path = entry["_file"]
-        exists = path.is_file()
+        stat = entry.get("_stat") or _regular_file_stat(path)
+        exists = stat is not None
         info = {"bytes": None, "mtime_utc": None, "sha256": None}
         meta: dict[str, Any] = {}
-        if exists:
-            stat = path.stat()
+        if stat is not None:
             meta = _REPORT_META.get(_report_key(path, stat), {})
             if not meta and stat.st_size <= MAX_READ_BYTES:
                 pending += 1
@@ -1340,9 +1366,10 @@ def project_reports(*, root: Path | None = None, now: datetime | None = None,
             "state": entry.get("state"), "hub_as_of": entry.get("hub_as_of"),
             "note": entry.get("note"), "exists": exists, "viewable": exists, **info})
     reports.sort(key=lambda r: (r["origin"] == "root", r["path"].lower()))
+    listing = _root_listing(root) if items else {}
     other_items = [{"hub_id": i.get("id"), "title": i.get("title"), "path": i.get("path"),
                     "section": i.get("section"), "role": i.get("role"), "state": i.get("state"),
-                    "exists": _exists(root, str(i.get("path")))}
+                    "exists": _exists(root, str(i.get("path")), listing)}
                    for i in items if not str(i.get("path")).lower().endswith(_HTML_SUFFIXES)]
     if pending and warm:
         _start_report_warmup(root)
@@ -1368,8 +1395,11 @@ def project_reports(*, root: Path | None = None, now: datetime | None = None,
                     exists=True, as_of=as_of, as_of_basis=basis, data=data)
 
 
-def _exists(root: Path, rel: str) -> bool:
+def _exists(root: Path, rel: str, listing: dict[str, tuple[Path, os.stat_result | None]] | None = None) -> bool:
     try:
+        parts = _clean_parts(rel)
+        if listing is not None and len(parts) == 1 and parts[0] in listing:
+            return True  # a root entry seen in the one directory listing
         return inside(root, rel).exists()
     except ValueError:
         return False
@@ -1439,9 +1469,9 @@ def render_report(report_id: str, *, root: Path | None = None) -> tuple[bytes, d
     if entry is None:
         raise ReportNotFound(f"not a whitelisted report: {report_id!r}")
     path: Path = entry["_file"]
-    if not path.is_file():
+    stat = entry.get("_stat") or _regular_file_stat(path)
+    if stat is None:
         raise ReportNotFound(f"report file is missing: {entry['path']}")
-    stat = path.stat()
     if stat.st_size > MAX_READ_BYTES:
         raise ValueError(f"report is larger than {MAX_READ_BYTES} bytes")
     data = path.read_bytes()
