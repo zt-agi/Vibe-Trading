@@ -1,0 +1,17 @@
+{
+  "schema_version": 1,
+  "profile": {
+    "id": "zt-fidelity-live-readonly",
+    "connector": "zt-fidelity",
+    "label": "Fidelity · Positions export (local, read-only)",
+    "environment": "live",
+    "readonly": true,
+    "capabilities": ["account.read", "positions.read"],
+    "notes": "ZT add-on. Reads the newest Fidelity Portfolio_Positions CSV under the project's broker/raw/*_refresh folders: no login, no credentials, no network, no writes. Account numbers are masked to the last 4 characters. Reports STALE when the export is older than stale_after_days (settings.json)."
+  },
+  "entrypoint": "adapter.py",
+  "auth": {
+    "type": "none",
+    "fields": []
+  }
+}

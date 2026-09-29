@@ -1,0 +1,7 @@
+{
+  "broker_raw_dir": "G:\\My Drive\\work\\Investment-AI-Drive-Research\\broker\\raw",
+  "folder_glob": "*_refresh",
+  "file_glob": "Portfolio_Positions_*.csv",
+  "stale_after_days": 3,
+  "serve_stale": false
+}
