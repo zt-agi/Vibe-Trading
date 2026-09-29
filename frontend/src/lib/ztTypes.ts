@@ -58,7 +58,7 @@ export interface ZtReportItem {
 
 export interface ZtReportsData {
   reports: ZtReportItem[];
-  counts: { reports: number; viewable: number; missing: number; hub_items: number };
+  counts: { reports: number; viewable: number; missing: number; hub_items: number; digests_pending?: number };
   hub_status: { label?: string; state?: string; note?: string; asOf?: string } | null;
   viewer_policy: string;
 }

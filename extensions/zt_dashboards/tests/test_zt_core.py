@@ -326,7 +326,10 @@ def test_world_model_reads_a_declared_export(core, project, monkeypatch):
 
 
 def test_project_reports_lists_hub_and_root_dashboards(core, project):
+    assert core.warm_report_cache() == 5
+    assert core.warm_report_cache() == 0  # cached: nothing is read twice
     out = core.project_reports(now=NOW)
+    assert out["data"]["counts"]["digests_pending"] == 0
     assert out["status"] == "STALE"  # hub curation asOf 2026-08-15
     reports = {r["id"]: r for r in out["data"]["reports"]}
     top25 = reports["ALPHA_MONITOR_TOP25.html"]
@@ -339,6 +342,60 @@ def test_project_reports_lists_hub_and_root_dashboards(core, project):
     assert out["data"]["counts"]["viewable"] == 5
     other = {i["path"]: i["exists"] for i in out["data"]["other_hub_items"]}
     assert other["PROJECT_HUB.json"] is True and other["README.md"] is False
+
+
+def test_project_reports_answers_from_stat_until_a_report_is_read(core, project, monkeypatch):
+    """On Google Drive, reading every dashboard made the list take a minute on PC1:
+    the list opens no report; the viewer and the warm-up pass fill digests and titles."""
+    reads = []
+    real_read_bytes = Path.read_bytes
+
+    def spy(self):
+        if self.suffix.lower() in (".html", ".htm"):
+            reads.append(self.name)
+        return real_read_bytes(self)
+
+    real_open = Path.open
+
+    def open_spy(self, *args, **kwargs):
+        if self.suffix.lower() in (".html", ".htm"):
+            reads.append(self.name)
+        return real_open(self, *args, **kwargs)
+
+    with monkeypatch.context() as patched:
+        patched.setattr(Path, "read_bytes", spy)
+        patched.setattr(Path, "open", open_spy)
+        out = core.project_reports(now=NOW, warm=False)
+    assert reads == []
+    reports = {r["id"]: r for r in out["data"]["reports"]}
+    top25, lane = reports["ALPHA_MONITOR_TOP25.html"], reports["ASM_PHASE2_LANE_OPS.html"]
+    assert top25["sha256"] is None and top25["bytes"] > 0 and top25["viewable"] is True
+    assert out["data"]["counts"]["digests_pending"] == 5
+    source = (project / "ALPHA_MONITOR_TOP25.html").read_bytes()
+    core.render_report("ALPHA_MONITOR_TOP25.html")
+    out = core.project_reports(now=NOW, warm=False)
+    reports = {r["id"]: r for r in out["data"]["reports"]}
+    assert reports["ALPHA_MONITOR_TOP25.html"]["sha256"] == hashlib.sha256(source).hexdigest()
+    assert out["data"]["counts"]["digests_pending"] == 4
+    # An edited report is read again: the cache key carries size and mtime.
+    path = project / "ALPHA_MONITOR_TOP25.html"
+    path.write_bytes(source + b"<!-- edited -->")
+    out = core.project_reports(now=NOW, warm=False)
+    reports = {r["id"]: r for r in out["data"]["reports"]}
+    assert reports["ALPHA_MONITOR_TOP25.html"]["sha256"] is None
+    assert lane["title"] in ("Phase 2 · lane ops", "ASM_PHASE2_LANE_OPS.html")
+
+
+def test_project_reports_starts_one_background_warmup(core, project):
+    out = core.project_reports(now=NOW)
+    assert out["data"]["counts"]["digests_pending"] == 5
+    thread = core._REPORT_WARMUP
+    assert thread is not None and thread.name == "zt-report-warmup"
+    thread.join(timeout=30)
+    out = core.project_reports(now=NOW)
+    assert out["data"]["counts"]["digests_pending"] == 0
+    reports = {r["id"]: r for r in out["data"]["reports"]}
+    assert reports["ASM_PHASE2_LANE_OPS.html"]["title"] == "Phase 2 · lane ops"
 
 
 def test_render_report_injects_shim_and_sets_isolating_headers(core, project):

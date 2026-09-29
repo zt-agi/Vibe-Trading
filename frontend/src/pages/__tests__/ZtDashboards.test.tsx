@@ -175,6 +175,27 @@ describe("ZT dashboards page", () => {
     expect(screen.getByText("missing")).toBeInTheDocument();
   });
 
+  it("says the dashboard list is loading while a slow Drive listing is in flight", async () => {
+    let resolve: (value: typeof REPORTS) => void = () => undefined;
+    apiMock.listZtReports.mockReturnValue(new Promise((done) => (resolve = done)));
+    renderPage();
+    expect(await screen.findByTestId("zt-reports-loading")).toHaveTextContent("Listing the project dashboards…");
+    await act(async () => resolve(REPORTS));
+    expect(await screen.findByText("Alpha Monitor Top 25")).toBeInTheDocument();
+    expect(screen.queryByTestId("zt-reports-loading")).toBeNull();
+  });
+
+  it("notes dashboards still being read in the background", async () => {
+    apiMock.listZtReports.mockResolvedValue({
+      ...REPORTS,
+      data: { ...REPORTS.data, counts: { ...REPORTS.data.counts, digests_pending: 2 } },
+    });
+    renderPage();
+    expect(await screen.findByTestId("zt-reports-pending")).toHaveTextContent(
+      "2 dashboards are still being read in the background",
+    );
+  });
+
   it("reports a missing export honestly and offers the latest one", async () => {
     apiMock.getZtSnapshot.mockImplementation(async (date: string) =>
       date === "today"

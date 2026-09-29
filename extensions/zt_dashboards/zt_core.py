@@ -34,6 +34,7 @@ import json
 import math
 import os
 import re
+import threading
 from datetime import date, datetime, time, timedelta, timezone
 from pathlib import Path, PurePosixPath
 from typing import Any, Iterable
@@ -1184,17 +1185,79 @@ HUB_REL = "PROJECT_HUB.json"
 _TITLE_RE = re.compile(rb"<title[^>]*>(.*?)</title>", re.IGNORECASE | re.DOTALL)
 
 
+def _title_from_head(head: bytes) -> str | None:
+    match = _TITLE_RE.search(head)
+    if not match:
+        return None
+    title = " ".join(html.unescape(match.group(1).decode("utf-8", errors="replace")).split())
+    return title[:200] or None
+
+
 def _html_title(path: Path) -> str | None:
     try:
         with path.open("rb") as handle:
             head = handle.read(65536)
     except OSError:
         return None
-    match = _TITLE_RE.search(head)
-    if not match:
-        return None
-    title = " ".join(html.unescape(match.group(1).decode("utf-8", errors="replace")).split())
-    return title[:200] or None
+    return _title_from_head(head)
+
+
+# ZT add-on (2026-09-29): report metadata cache. The project lives on Google Drive for
+# desktop, where reading every dashboard to hash it (and to find its <title>) made
+# /zt/reports take a minute on PC1 before the list could render. The list now answers
+# from stat() and this cache, keyed by (path, size, mtime_ns) so an edited file is
+# re-read; the viewer fills it for the report it serves and one background pass fills
+# the rest (warm_report_cache).
+_REPORT_META: dict[tuple[str, int, int], dict[str, Any]] = {}
+_REPORT_META_LOCK = threading.Lock()
+_REPORT_WARMUP: threading.Thread | None = None
+
+
+def _report_key(path: Path, stat: os.stat_result) -> tuple[str, int, int]:
+    return (str(path), int(stat.st_size), int(stat.st_mtime_ns))
+
+
+def _remember_report(key: tuple[str, int, int], data: bytes) -> dict[str, Any]:
+    meta = {"sha256": hashlib.sha256(data).hexdigest(), "title": _title_from_head(data[:65536])}
+    with _REPORT_META_LOCK:
+        _REPORT_META[key] = meta
+    return meta
+
+
+def warm_report_cache(root: Path | None = None) -> int:
+    """Read, hash and title every listed report not cached yet; returns how many were read."""
+    root = root or project_root()
+    read = 0
+    for entry in report_index(root).values():
+        path: Path = entry["_file"]
+        try:
+            stat = path.stat()
+            if not path.is_file() or stat.st_size > MAX_READ_BYTES:
+                continue
+            key = _report_key(path, stat)
+            if key in _REPORT_META:
+                continue
+            _remember_report(key, path.read_bytes())
+            read += 1
+        except OSError:
+            continue
+    return read
+
+
+def _start_report_warmup(root: Path) -> None:
+    global _REPORT_WARMUP
+    with _REPORT_META_LOCK:
+        if _REPORT_WARMUP is not None and _REPORT_WARMUP.is_alive():
+            return
+
+        def run() -> None:
+            try:
+                warm_report_cache(root)
+            except Exception:  # noqa: BLE001 - a cache pass must never break the server
+                pass
+
+        _REPORT_WARMUP = threading.Thread(target=run, name="zt-report-warmup", daemon=True)
+        _REPORT_WARMUP.start()
 
 
 def _hub_items(root: Path) -> tuple[Blob | None, dict[str, Any], list[dict[str, Any]]]:
@@ -1244,23 +1307,33 @@ def report_index(root: Path) -> dict[str, dict[str, Any]]:
 
 
 @reader("project_reports")
-def project_reports(*, root: Path | None = None, now: datetime | None = None) -> dict[str, Any]:
-    """PROJECT_HUB.json items plus root dashboards, with existence and digests."""
+def project_reports(*, root: Path | None = None, now: datetime | None = None,
+                    warm: bool = True) -> dict[str, Any]:
+    """PROJECT_HUB.json items plus root dashboards, with existence and digests.
+
+    Answers from stat() and the report metadata cache: a report not read yet has
+    ``sha256`` null and, when the hub gives no title, its file name as the title,
+    until the background pass (``warm``) or the viewer has read it.
+    """
     root = root or project_root()
     now = now or utc_now()
     hub_blob, hub_status, items = _hub_items(root)
     reports = []
+    pending = 0
     for entry in report_index(root).values():
         path: Path = entry["_file"]
         exists = path.is_file()
         info = {"bytes": None, "mtime_utc": None, "sha256": None}
+        meta: dict[str, Any] = {}
         if exists:
-            data = path.read_bytes() if path.stat().st_size <= MAX_READ_BYTES else b""
             stat = path.stat()
+            meta = _REPORT_META.get(_report_key(path, stat), {})
+            if not meta and stat.st_size <= MAX_READ_BYTES:
+                pending += 1
             info = {"bytes": stat.st_size,
                     "mtime_utc": iso(datetime.fromtimestamp(stat.st_mtime, timezone.utc)),
-                    "sha256": hashlib.sha256(data).hexdigest() if data else None}
-        title = entry.get("title") or (_html_title(path) if exists else None) or entry["path"]
+                    "sha256": meta.get("sha256")}
+        title = entry.get("title") or meta.get("title") or entry["path"]
         reports.append({
             "id": entry["id"], "title": title, "path": entry["path"], "origin": entry["origin"],
             "section": entry.get("section"), "role": entry.get("role"),
@@ -1271,11 +1344,13 @@ def project_reports(*, root: Path | None = None, now: datetime | None = None) ->
                     "section": i.get("section"), "role": i.get("role"), "state": i.get("state"),
                     "exists": _exists(root, str(i.get("path")))}
                    for i in items if not str(i.get("path")).lower().endswith(_HTML_SUFFIXES)]
+    if pending and warm:
+        _start_report_warmup(root)
     data = {
         "reports": reports,
         "counts": {"reports": len(reports), "viewable": sum(r["viewable"] for r in reports),
                    "missing": sum(not r["exists"] for r in reports),
-                   "hub_items": len(items)},
+                   "hub_items": len(items), "digests_pending": pending},
         "hub_status": hub_status or None,
         "other_hub_items": other_items,
         "viewer_policy": ("Only these ids are served, sandboxed, with a report CSP that blocks "
@@ -1366,10 +1441,12 @@ def render_report(report_id: str, *, root: Path | None = None) -> tuple[bytes, d
     path: Path = entry["_file"]
     if not path.is_file():
         raise ReportNotFound(f"report file is missing: {entry['path']}")
-    if path.stat().st_size > MAX_READ_BYTES:
+    stat = path.stat()
+    if stat.st_size > MAX_READ_BYTES:
         raise ValueError(f"report is larger than {MAX_READ_BYTES} bytes")
     data = path.read_bytes()
-    return inject_shim(data), report_headers(hashlib.sha256(data).hexdigest(), entry["id"])
+    meta = _remember_report(_report_key(path, stat), data)
+    return inject_shim(data), report_headers(meta["sha256"], entry["id"])
 
 
 def not_found_headers() -> dict[str, str]:

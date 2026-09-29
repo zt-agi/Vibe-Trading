@@ -348,6 +348,7 @@ export function ZtDashboards() {
           tz={tz}
           envelope={reports}
           error={reportsError}
+          loading={loading && !reports}
           activeId={viewer?.item.id ?? null}
           onOpen={(item) => void openReport(item)}
         />
@@ -721,16 +722,19 @@ function ReportsSection({
   tz,
   envelope,
   error,
+  loading,
   activeId,
   onOpen,
 }: {
   tz: Translate;
   envelope: ZtEnvelope<ZtReportsData> | null;
   error: LoadError | null;
+  loading: boolean;
   activeId: string | null;
   onOpen: (item: ZtReportItem) => void;
 }) {
   const reports = envelope?.data.reports ?? [];
+  const pending = envelope?.data.counts.digests_pending ?? 0;
   return (
     <section aria-labelledby="zt-reports" className="space-y-3">
       <div className="flex flex-col gap-1 sm:flex-row sm:items-end sm:justify-between">
@@ -754,6 +758,16 @@ function ReportsSection({
       </div>
 
       {error ? <ErrorPanel error={error} tz={tz} /> : null}
+
+      {!envelope && !error && loading ? (
+        <p
+          data-testid="zt-reports-loading"
+          className="flex items-center gap-2 rounded-md border border-dashed p-6 text-sm text-muted-foreground"
+        >
+          <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
+          {tz("reportsLoading", "Listing the project dashboards…")}
+        </p>
+      ) : null}
 
       {envelope && reports.length === 0 ? (
         <p className="rounded-md border border-dashed p-6 text-center text-sm text-muted-foreground">
@@ -796,6 +810,16 @@ function ReportsSection({
           </li>
         ))}
       </ul>
+
+      {pending > 0 ? (
+        <p data-testid="zt-reports-pending" className="text-[11px] text-muted-foreground">
+          {tz(
+            "reportsPending",
+            "{{count}} dashboards are still being read in the background (titles and digests); Refresh shows them.",
+            { count: pending },
+          )}
+        </p>
+      ) : null}
 
       {envelope ? (
         <p className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
