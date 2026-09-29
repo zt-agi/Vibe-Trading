@@ -1,7 +1,7 @@
 import { useTranslation } from "react-i18next";
 import { useEffect, useRef, useState } from "react";
 import { Link, Outlet, useLocation, useSearchParams } from "react-router";
-import { Activity, BarChart3, Bot, CalendarClock, CandlestickChart, Check, ChevronDown, FileText, Languages, LayoutDashboard, Moon, Sun, Plus, Trash2, Pencil, MessageSquare, ChevronsLeft, ChevronsRight, Settings, Layers, Loader2, WalletCards } from "lucide-react";
+import { Activity, BarChart3, Bot, CalendarClock, CandlestickChart, Check, ChevronDown, ClipboardCheck, FileText, Languages, LayoutDashboard, Moon, Sun, Plus, Trash2, Pencil, MessageSquare, ChevronsLeft, ChevronsRight, Settings, Layers, Loader2, WalletCards } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useDarkMode } from "@/hooks/useDarkMode";
 import { api, type SessionItem } from "@/lib/api";
@@ -31,8 +31,13 @@ export function Layout() {
     { to: "/correlation", icon: BarChart3, label: t('layout.correlation') },
     // ZT add-on: read-only research dashboards (extensions/zt_dashboards).
     { to: "/zt", icon: LayoutDashboard, label: t('zt.nav' as never, { defaultValue: 'ZT Research' }) as unknown as string },
+    // ZT add-on: human approval of every order (extensions/zt_approvals).
+    { to: "/zt/approvals", icon: ClipboardCheck, label: t('ztApprovals.nav' as never, { defaultValue: 'Order approvals' }) as unknown as string },
   ];
   const { pathname } = useLocation();
+  // ZT add-on: the longest matching entry is active, so /zt/approvals does not also light /zt.
+  const activeTo = NAV.filter(({ to }) => to !== "/" && pathname.startsWith(to))
+    .sort((a, b) => b.to.length - a.to.length)[0]?.to;
   const [searchParams] = useSearchParams();
   const { dark, toggle } = useDarkMode();
   const [sessions, setSessions] = useState<SessionItem[]>([]);
@@ -143,7 +148,7 @@ export function Layout() {
                 className={cn(
                   "flex items-center rounded-md text-[13px] transition-colors",
                   collapsed ? "justify-center px-2 py-1.5" : "gap-3 px-3 py-1.5 max-md:justify-center max-md:px-2",
-                  (to === "/" ? pathname === "/" || pathname.startsWith("/agent") : pathname.startsWith(to))
+                  (to === "/" ? pathname === "/" || pathname.startsWith("/agent") : to === activeTo)
                     ? "bg-primary/10 text-primary font-medium"
                     : "text-muted-foreground hover:bg-muted/60 hover:text-foreground"
                 )}

@@ -38,6 +38,10 @@ const OptionsLab = lazy(() =>
 const ZtDashboards = lazy(() =>
   import("@/pages/ZtDashboards").then((m) => ({ default: m.ZtDashboards })),
 );
+// ZT add-on: human approval of every order (extensions/zt_approvals).
+const ZtApprovals = lazy(() =>
+  import("@/pages/ZtApprovals").then((m) => ({ default: m.ZtApprovals })),
+);
 
 function PageLoader() {
   return (
@@ -76,6 +80,7 @@ export const router = createBrowserRouter([
       { path: "/alpha-zoo/compare", element: wrap(AlphaZoo) },
       { path: "/alpha-zoo/:alphaId", element: wrap(AlphaZoo) },
       { path: "/zt", element: wrap(ZtDashboards) }, // ZT add-on
+      { path: "/zt/approvals", element: wrap(ZtApprovals) }, // ZT add-on
     ],
   },
 ]);
