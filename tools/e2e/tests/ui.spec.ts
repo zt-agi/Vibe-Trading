@@ -334,6 +334,9 @@ test.describe("desktop shell (emulated) @desktop", () => {
     const popup = context.waitForEvent("page");
     await page.getByRole("button", { name: "Open in browser" }).click();
     const opened = await popup;
+    // The popup exists before its first navigation commits (url() is "" until then);
+    // on a busy PC the URL arrives a moment later.
+    await opened.waitForURL(/\/zt\/reports\/.+\?ticket=/, { timeout: 15_000 });
     expect(opened.url()).toMatch(/\/zt\/reports\/.+\?ticket=/);
     expect(opened.url()).not.toContain(KEY);
     await opened.close();
