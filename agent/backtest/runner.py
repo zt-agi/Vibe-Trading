@@ -1337,11 +1337,28 @@ def main(run_dir: Path) -> None:
     if callable(engine_loader):
         loader = engine_loader(data_map)
 
+    # ZT add-on: the as-of guard (backtest.asof_guard) is off unless the run
+    # claims tradeable or switches it on; when on it checks the snapshot and
+    # the strategy, and wraps the engine's loader.
+    from backtest.asof_guard import AsOfGuardConfigError, LookAheadError, guard_run
+
     if engine_type == "options":
-        from backtest.engines.options_portfolio import run_options_backtest
-        run_options_backtest(config, loader, signal_engine, run_dir, bars_per_year=bars_per_year)
+        from backtest.engines.options_portfolio import options_fill_timing, run_options_backtest
+        fill_timing = options_fill_timing(config)
     else:
         market_engine = _create_market_engine(effective_source, config, codes)
+        fill_timing = getattr(market_engine, "FILL_TIMING", "next_open")
+    try:
+        loader = guard_run(
+            config, data_map, loader, fill_timing=fill_timing, signal_factory=engine_cls
+        )
+    except (LookAheadError, AsOfGuardConfigError) as exc:
+        print(json.dumps({"error": f"as-of guard: {exc}"}))
+        sys.exit(1)
+
+    if engine_type == "options":
+        run_options_backtest(config, loader, signal_engine, run_dir, bars_per_year=bars_per_year)
+    else:
         market_engine.run_backtest(config, loader, signal_engine, run_dir, bars_per_year=bars_per_year)
 
 

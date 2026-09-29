@@ -805,6 +805,11 @@ class BaseEngine(ABC):
         """Allow engines to update risk state/evidence after a committed delta fill."""
         return None
 
+    #: ZT add-on: when a signal fills (``backtest.asof_guard.FILL_TIMINGS``).
+    #: ``_align`` shifts each symbol's signal one bar on its own calendar and
+    #: ``_execute_bars`` fills at that bar's open.
+    FILL_TIMING = "next_open"
+
     #: Rejection causes that mean the engine WANTED a position and could not
     #: take it. ``no_target_weight`` and ``already_held`` are excluded: they
     #: mean nothing was wanted, which is not a finding.
