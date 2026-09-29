@@ -141,12 +141,23 @@ class TestSafeRunDir:
 
     def test_default_agent_runs_dir_accepted(self, tmp_path: Path, monkeypatch):
         monkeypatch.delenv("VIBE_TRADING_ALLOWED_RUN_ROOTS", raising=False)
-        agent_runs = Path(__file__).resolve().parents[1] / "runs" / "safe_run"
+        runs_root = Path(__file__).resolve().parents[1] / "runs"
+        agent_runs = runs_root / "safe_run"
+        # ZT add-on: remove what this test creates. A leftover agent/runs/safe_run is
+        # moved into the user's runtime runs folder by migrate_legacy_state at the next
+        # server start and then shows up as the newest run in the Web UI.
+        created = [path for path in (runs_root, agent_runs) if not path.exists()]
         agent_runs.mkdir(parents=True, exist_ok=True)
+        try:
+            result = safe_run_dir(str(agent_runs))
 
-        result = safe_run_dir(str(agent_runs))
-
-        assert result == agent_runs.resolve()
+            assert result == agent_runs.resolve()
+        finally:
+            for path in reversed(created):
+                try:
+                    path.rmdir()
+                except OSError:
+                    pass
 
     def test_rejection_lists_allowed_roots_and_mcp_scope(self, tmp_path: Path, monkeypatch):
         """A rejection must say what IS allowed, not only which env var exists.

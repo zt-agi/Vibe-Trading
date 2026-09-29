@@ -29,6 +29,11 @@ const ROUTES: { path: string; name: string }[] = [
 ];
 
 const extraIgnore = process.env.VT_E2E_IGNORE_CONSOLE ? new RegExp(process.env.VT_E2E_IGNORE_CONSOLE) : null;
+// VT's run page (RunDetail.tsx) asks for the run's optional strategy files with
+// api.getRunCode(...).catch(() => ({})): a run without a code folder answers 404,
+// which the page handles, but the browser still logs the failed resource load.
+// That 404 is VT's contract for such runs (manual analyses, swarm-only runs), not a UI error.
+const OPTIONAL_RUN_FILE_404 = /status of 404 \(Not Found\) \([^)]*\/runs\/[^/)]+\/(?:code|pine)\)$/;
 const STRICT = process.env.VT_E2E_STRICT === "1";
 
 // Vibe-Trading's own pages that overflow a 390 px viewport (found by this suite,
@@ -58,6 +63,7 @@ function watch(page: Page): Watch {
     const where = message.location().url ? ` (${message.location().url})` : "";
     const line = redact(`${text}${where}`);
     if (extraIgnore?.test(line)) return;
+    if (OPTIONAL_RUN_FILE_404.test(line)) return;
     seen.consoleErrors.push(line);
   });
   return seen;
