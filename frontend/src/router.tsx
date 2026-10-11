@@ -38,6 +38,7 @@ const OptionsLab = lazy(() =>
 const ZtDashboards = lazy(() =>
   import("@/pages/ZtDashboards").then((m) => ({ default: m.ZtDashboards })),
 );
+const ZtDamnang = lazy(() => import("@/pages/ZtDamnang").then((m) => ({ default: m.ZtDamnang })));
 const ZtHistoricalDaily = lazy(() => import("@/pages/ZtHistoricalDaily"));
 const ZtHistoricalChartbook = lazy(() => import("@/pages/ZtHistoricalChartbook").then((m) => ({ default: m.ZtHistoricalChartbook })));
 const ZtChartbook = lazy(() =>
@@ -85,6 +86,7 @@ export const router = createBrowserRouter([
       { path: "/alpha-zoo/compare", element: wrap(AlphaZoo) },
       { path: "/alpha-zoo/:alphaId", element: wrap(AlphaZoo) },
       { path: "/zt", element: wrap(ZtDashboards) }, // ZT add-on
+      { path: "/zt/damnang", element: wrap(ZtDamnang) },
       { path: "/zt/chartbook/history", element: wrap(ZtHistoricalChartbook) },
       { path: "/zt/chartbook/history/daily", element: wrap(ZtHistoricalDaily) },
       { path: "/zt/chartbook/history/:themeId", element: wrap(ZtHistoricalChartbook) },

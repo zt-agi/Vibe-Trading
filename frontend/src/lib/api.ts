@@ -14,6 +14,7 @@ import type {
 } from "@/lib/options";
 
 import type { ZtEnvelope, ZtReportsData, ZtSnapshotData } from "@/lib/ztTypes"; // ZT add-on
+import type { DamnangIndex } from "@/lib/damnang";
 import type { A01SecAnnualPreviewModel, ChartbookIndex, ChartbookTheme, EnergyPilotModel, M01RoutesPreviewModel, M02VipPreviewModel, PjmPreviewModel, UstCurvePreviewModel, UstPrivateFrozenModel, WpsrPreviewModel } from "@/lib/ztChartbook";
 import type { FedH41PrivateModel } from "@/components/charts/ZtFedH41PrivatePreview";
 import type { LatestDailyCover } from "@/lib/dailyCover";
@@ -1285,6 +1286,8 @@ export const api = {
   // ZT add-on: read-only research dashboards (extensions/zt_dashboards).
 
   listZtReports: () => request<ZtEnvelope<ZtReportsData>>("/zt/reports"),
+  getDamnangPosts: (refresh = false) =>
+    request<DamnangIndex>(`/zt/damnang/api/posts${refresh ? "?refresh=true" : ""}`),
 
   getZtSnapshot: (date: string) =>
     request<ZtEnvelope<ZtSnapshotData>>(`/zt/snapshot/${encodeURIComponent(date)}`),

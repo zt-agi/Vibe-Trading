@@ -1,7 +1,7 @@
 import { useTranslation } from "react-i18next";
 import { useEffect, useRef, useState } from "react";
 import { Link, Outlet, useLocation, useSearchParams } from "react-router";
-import { Activity, BarChart3, Bot, CalendarClock, CandlestickChart, Check, ChevronDown, ClipboardCheck, FileText, Languages, LayoutDashboard, Moon, Sun, Plus, Trash2, Pencil, MessageSquare, ChevronsLeft, ChevronsRight, Settings, Layers, Loader2, WalletCards } from "lucide-react";
+import { Activity, BarChart3, BookOpen, Bot, CalendarClock, CandlestickChart, Check, ChevronDown, ClipboardCheck, FileText, Languages, LayoutDashboard, Moon, Sun, Plus, Trash2, Pencil, MessageSquare, ChevronsLeft, ChevronsRight, Settings, Layers, Loader2, WalletCards } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useDarkMode } from "@/hooks/useDarkMode";
 import { api, type SessionItem } from "@/lib/api";
@@ -32,6 +32,7 @@ export function Layout() {
     { to: "/correlation", icon: BarChart3, label: t('layout.correlation') },
     // ZT add-on: read-only research dashboards (extensions/zt_dashboards).
     { to: "/zt", icon: LayoutDashboard, label: t('zt.nav' as never, { defaultValue: 'ZT Research' }) as unknown as string },
+    { to: "/zt/damnang", icon: BookOpen, label: "Damnang Research" },
     // ZT add-on: human approval of every order (extensions/zt_approvals).
     { to: "/zt/approvals", icon: ClipboardCheck, label: t('ztApprovals.nav' as never, { defaultValue: 'Order approvals' }) as unknown as string },
   ];
