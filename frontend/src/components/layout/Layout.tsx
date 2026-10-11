@@ -9,6 +9,7 @@ import { safeGet, safeSet } from "@/lib/storage";
 import { useAgentStore } from "@/stores/agent";
 import { BrandMark } from "@/components/common/BrandMark";
 import { ConnectionBanner } from "@/components/layout/ConnectionBanner";
+import { ChartbookScrollControls } from "@/components/layout/ChartbookScrollControls";
 import { SUPPORTED_LANGUAGES } from "@/i18n";
 
 // APP_VERSION is sourced from i18n locale files (app.version key) to keep a
@@ -45,6 +46,19 @@ export function Layout() {
   const sseStatus = useAgentStore(s => s.sseStatus);
   const sseRetryAttempt = useAgentStore(s => s.sseRetryAttempt);
   const [collapsed, setCollapsed] = useState(() => safeGet("qa-sidebar") === "collapsed");
+  const mainScrollRef = useRef<HTMLElement>(null);
+  const railTouchY = useRef<number | null>(null);
+
+  const scrollMainFromRail = (deltaY: number, target?: EventTarget | null) => {
+    // When enlarged text makes the navigation taller than the viewport, let
+    // that list consume its own wheel/touch scroll before forwarding rail
+    // gestures to the main pane on narrow screens.
+    const nav = target instanceof Element ? target.closest("nav") : null;
+    if (nav && nav.scrollHeight > nav.clientHeight + 1) return;
+    if (window.matchMedia("(max-width: 767px)").matches && mainScrollRef.current) {
+      mainScrollRef.current.scrollTop += deltaY;
+    }
+  };
 
   const activeSessionId = searchParams.get("session");
   const streamingSessionId = useAgentStore(s => s.streamingSessionId);
@@ -104,7 +118,7 @@ export function Layout() {
   };
 
   return (
-    <div className="flex h-screen bg-background rtl:flex-row-reverse">
+    <div className="flex h-screen overflow-hidden bg-background rtl:flex-row-reverse">
       <a
         href="#main"
         className="sr-only focus:not-sr-only focus:fixed focus:start-4 focus:top-4 focus:z-[70] focus:rounded-md focus:bg-background focus:px-4 focus:py-2 focus:text-sm focus:font-medium focus:text-foreground focus:shadow-lg focus:outline-none focus:ring-2 focus:ring-primary/40"
@@ -114,17 +128,26 @@ export function Layout() {
       {/* Sidebar */}
       <aside
         aria-label={t('layout.sidebar', { defaultValue: 'Vibe-Trading sidebar' })}
+        onWheel={(event) => scrollMainFromRail(event.deltaY, event.target)}
+        onTouchStart={(event) => { railTouchY.current = event.touches[0]?.clientY ?? null; }}
+        onTouchMove={(event) => {
+          const nextY = event.touches[0]?.clientY;
+          if (railTouchY.current !== null && nextY !== undefined) scrollMainFromRail(railTouchY.current - nextY, event.target);
+          railTouchY.current = nextY ?? null;
+        }}
+        onTouchEnd={() => { railTouchY.current = null; }}
+        onTouchCancel={() => { railTouchY.current = null; }}
         className={cn(
-          "max-md:w-12 border-e border-border/60 bg-card flex flex-col shrink-0 transition-all duration-200 overflow-visible",
-          collapsed ? "w-12" : "w-64"
+          "max-md:w-[56px] min-h-0 border-e border-border/60 bg-card flex flex-col shrink-0 transition-all duration-200 overflow-hidden",
+          collapsed ? "w-12" : "w-[256px]"
         )}
       >
         {/* Brand */}
-        <div className={cn("border-b border-border/60", collapsed ? "p-2 flex justify-center" : "p-4 max-md:p-2 max-md:flex max-md:justify-center")}>
+        <div className={cn("border-b border-border/60 max-md:p-[7px]", collapsed ? "p-2 flex justify-center" : "p-4 max-md:flex max-md:justify-center")}>
           <Link
             to="/"
             aria-label="Vibe-Trading"
-            className={cn("flex items-center", collapsed ? "justify-center" : "gap-2 max-md:justify-center")}
+            className={cn("flex min-h-11 min-w-11 max-md:min-w-[42px] items-center", collapsed ? "justify-center" : "gap-2 max-md:justify-center")}
           >
             <BrandMark className="h-6 w-6 shrink-0" />
             {!collapsed && (
@@ -136,7 +159,7 @@ export function Layout() {
         {/* Nav */}
         <nav
           aria-label={t('layout.mainNavigation', { defaultValue: 'Main navigation' })}
-          className={cn("space-y-0.5", collapsed ? "p-1" : "p-2 max-md:p-1")}
+          className={cn("min-h-0 overflow-y-auto overscroll-contain space-y-0.5", collapsed ? "p-1" : "p-2 max-md:p-1")}
         >
           {NAV.map(({ to, icon: Icon, label }) => {
             const text = label;
@@ -146,8 +169,8 @@ export function Layout() {
                 to={to}
                 aria-label={text}
                 className={cn(
-                  "flex items-center rounded-md text-[13px] transition-colors",
-                  collapsed ? "justify-center px-2 py-1.5" : "gap-3 px-3 py-1.5 max-md:justify-center max-md:px-2",
+                  "flex min-h-11 min-w-11 max-md:min-w-[42px] items-center rounded-md text-[13px] transition-colors",
+                  collapsed ? "justify-center px-2 py-1.5 max-md:px-[7px]" : "gap-3 px-3 py-1.5 max-md:justify-center max-md:px-[7px]",
                   (to === "/" ? pathname === "/" || pathname.startsWith("/agent") : to === activeTo)
                     ? "bg-primary/10 text-primary font-medium"
                     : "text-muted-foreground hover:bg-muted/60 hover:text-foreground"
@@ -163,7 +186,7 @@ export function Layout() {
 
         {/* Sessions — hidden when collapsed */}
         {!collapsed && (
-          <div className="flex-1 overflow-auto border-t border-border/60 mt-2 flex flex-col max-md:hidden">
+          <div className="flex-1 min-h-0 overflow-auto border-t border-border/60 mt-2 flex flex-col max-md:hidden">
             <div className="flex items-center justify-between px-4 py-2">
               <span className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
                 <MessageSquare className="h-3.5 w-3.5" />
@@ -315,9 +338,10 @@ export function Layout() {
       {/* Main */}
       <div className="relative flex-1 flex flex-col overflow-hidden">
         <ConnectionBanner status={sseStatus} retryAttempt={sseRetryAttempt} />
-        <main id="main" className="flex-1 min-h-0 overflow-auto">
+        <main id="main" ref={mainScrollRef} className="flex-1 min-h-0 overflow-auto">
           <Outlet />
         </main>
+        {/^\/zt\/chartbook(?:\/|$)/.test(pathname) && <ChartbookScrollControls target={mainScrollRef} />}
       </div>
     </div>
   );
